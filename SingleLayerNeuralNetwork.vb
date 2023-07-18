@@ -1,4 +1,4 @@
-﻿Namespace NLP
+﻿Namespace Basic_NLP
     Public Class SingleLayerNeuralNetwork
 
         Public Inputs As List(Of Double)
@@ -1195,5 +1195,4 @@
             End Function
         End Class
     End Class
-
 End Namespace
