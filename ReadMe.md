@@ -1,4 +1,4 @@
-﻿## Single Layer Neural Network
+﻿## Single Layer Neural Network (VB.NET)
 This repository contains an implementation of a single-layer neural network in Visual Basic (.NET). The neural network is designed for simple classification tasks and demonstrates the principles of forward and backward propagation.
 
 ## Features
