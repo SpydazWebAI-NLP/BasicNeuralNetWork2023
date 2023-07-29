@@ -65,6 +65,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.md" />
+    <Compile Include="NeuralNetwork.vb" />
     <Compile Include="SingleLayerNeuralNetwork.vb" />
     <Compile Include="My Project\AssemblyInfo.vb" />
     <Compile Include="My Project\Application.Designer.vb">
