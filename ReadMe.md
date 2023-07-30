@@ -6,7 +6,9 @@ Implements a single-layer neural network with customizable activation functions.
 Supports various transfer functions, including Sigmoid, Hyperbolic Tangent, Rectified Linear Unit (ReLU), and Softmax.
 Provides functions for training the neural network using different learning algorithms, such as Sigmoid Training and Softmax Training.
 Includes utility functions for matrix operations, error calculations, and weight initialization.
-Getting Started
+
+
+## Getting Started
 To get started with the single-layer neural network, follow these steps:
 
 ## Prerequisites
