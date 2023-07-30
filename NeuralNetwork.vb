@@ -1,1072 +1,2760 @@
-﻿Public Class NeuralNetwork
-    Private inputLayerSize As Integer
-    Public hiddenLayerSize As Integer
-    Public outputLayerSize As Integer
-    Public transferFunc As TransferFunction
-    Public weightsIH As Double(,)
-    Public weightsHO As Double(,)
-    Private learningRate As Double
-    ' Define the TransferFunction enum to represent different activation functions.
-    Public Enum TransferFunction
-        Sigmoid
-        ReLU
-        Tanh
-    End Enum
-    ' Constructor
-    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double)
-        Me.inputLayerSize = inputSize
-        Me.hiddenLayerSize = hiddenSize
-        Me.outputLayerSize = outputSize
-        Me.transferFunc = transferFunc
-        Me.learningRate = learningRate
+﻿Imports System.IO
+Imports System.Web.Script.Serialization
+Imports System.Windows.Forms
+Imports System.Xml.Serialization
+Imports SpydazWebAI.NeuralNetWork.Basic_NLP.SingleLayerNeuralNetwork
 
-        ' Initialize weights with random values (you can use other initialization methods)
-        InitializeWeights()
-    End Sub
+Namespace NeuralNetworkFactory
 
-    ' Private method to initialize weights with random values.
-    Public Sub InitializeWeights()
-        Dim random As New Random()
 
-        ' Initialize weightsIH with random values between -1 and 1.
-        weightsIH = New Double(inputLayerSize, hiddenLayerSize) {}
-        For i As Integer = 0 To inputLayerSize - 1
-            For j As Integer = 0 To hiddenLayerSize - 1
-                weightsIH(i, j) = 2 * random.NextDouble() - 1
+    Public MustInherit Class NeuralNetworkFactory
+        Public Enum NetworkType
+            FeedForwards
+            BackPropergation
+            None
+        End Enum
+
+        ''' <summary>
+        ''' Each layer consists of neurons(nodes) the training cases also use an input layer and an
+        ''' output layer
+        ''' </summary>
+        ''' <remarks></remarks>
+        Public Class Layer
+            ''' <summary>
+            ''' Each layer consists of nodes (neurons) these are each individual. all layers contain
+            ''' nodes, Used for neural network inputs / outputs / hidden nodes
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public Class Neuron
+
+                ''' <summary>
+                ''' The input of the node is the collective sum of the inputs and their respective weights
+                ''' </summary>
+                ''' <remarks></remarks>
+                Public input As Double
+
+                ''' <summary>
+                ''' the output of the node is also relational to the transfer function used
+                ''' </summary>
+                ''' <remarks></remarks>
+                Public output As Double
+
+                ''' <summary>
+                ''' There is a value attached with dendrite called weight. The weight associated with a
+                ''' dendrites basically determines the importance of incoming value. A weight with
+                ''' larger value determines that the value from that particular neuron is of higher
+                ''' significance. To achieve this what we do is multiply the incoming value with weight.
+                ''' So no matter how high the value is, if the weight is low the multiplication yields
+                ''' the final low value.
+                ''' </summary>
+                ''' <remarks></remarks>
+                Public weight As Double
+
+                ''' <summary>
+                ''' Add biasing to the Perceptron
+                ''' </summary>
+                Public bias As Double
+
+                ''' <summary>
+                ''' Constructor Single Input
+                ''' </summary>
+                Public Sub New()
+                    CreateRandWeight(0, 1)
+                    bias = 0.1
+                End Sub
+
+                ''' <summary>
+                ''' Initial Weights can be determined by the number of hidden nodes and the number of
+                ''' input nodes this is a rule of thumb
+                ''' </summary>
+                ''' <remarks></remarks>
+                Public Sub CreateRandWeight(ByRef InputLow As Integer, ByRef InputHigh As Integer)
+                    Randomize()
+                    Dim value As Integer = CInt(Int((InputHigh * Rnd()) + InputLow))
+                    weight = value
+                End Sub
+
+                ''' <summary>
+                ''' Sets input of the node
+                ''' </summary>
+                ''' <param name="value"></param>
+                Public Sub SetInput(ByRef value As Double)
+                    input = value
+                End Sub
+
+                ''' <summary>
+                ''' Activates Node and sets the output for the node
+                ''' </summary>
+                ''' <param name="Activation">Activation Function</param>
+                ''' <remarks>ActivationFunction(Node.input * Node.weight)</remarks>
+                Public Sub ActivateNode(ByRef Activation As TransferFunctionType)
+                    output = TransferFunction.EvaluateTransferFunct(Activation, NodeTotal())
+                End Sub
+
+                ''' <summary>
+                ''' Produces a node total which can be fed to the activation function (Stage 1)
+                ''' (input * weight)
+                ''' </summary>
+                ''' <returns>Node input * Node Weight</returns>
+                ''' <remarks></remarks>
+                Public Function NodeTotal() As Double
+                    Return input * weight + bias
+                End Function
+
+                ''' <summary>
+                ''' Recalcualtes the weight for this node
+                ''' </summary>
+                ''' <param name="ActualOutput">Output of node</param>
+                ''' <param name="ExpectedOutput">Expected Output of node</param>
+                Public Sub RecalculateWeight(ByRef ActualOutput As Double, ByRef ExpectedOutput As Double)
+                    Dim NodeError As Double = ActualOutput - ExpectedOutput
+                    Dim Delta = NodeError * TransferFunction.EvaluateTransferFunctionDerivative(TransferFunctionType.Sigmoid, ActualOutput)
+                    weight += Delta
+                    bias += Delta
+                End Sub
+
+                ''' <summary>
+                ''' Returns output from Node Given Activation Function
+                ''' </summary>
+                ''' <param name="Activation"></param>
+                ''' <returns></returns>
+                Public Function Compute(ByRef Activation As TransferFunctionType) As Double
+                    Return TransferFunction.EvaluateTransferFunct(Activation, NodeTotal())
+                End Function
+
+                ''' <summary>
+                ''' deserialize object from Json
+                ''' </summary>
+                ''' <param name="Str">json</param>
+                ''' <returns></returns>
+                Public Shared Function FromJson(ByRef Str As String) As Neuron
+                    Try
+                        Dim Converter As New JavaScriptSerializer
+                        Dim diag As Neuron = Converter.Deserialize(Of Neuron)(Str)
+                        Return diag
+                    Catch ex As Exception
+                        Dim Buttons As MessageBoxButtons = MessageBoxButtons.OK
+                        MessageBox.Show(ex.Message, "ERROR", Buttons)
+                    End Try
+                    Return Nothing
+                End Function
+
+                ''' <summary>
+                ''' Serializes object to json
+                ''' </summary>
+                ''' <returns> </returns>
+                Public Function ToJson() As String
+                    Dim Converter As New JavaScriptSerializer
+                    Return Converter.Serialize(Me)
+                End Function
+
+                ''' <summary>
+                ''' Transfer Function used in the calculation of the following layer
+                ''' </summary>
+                Public Structure TransferFunction
+                    ''' <summary>
+                    ''' These are the options of transfer functions available to the network
+                    ''' This is used to select which function to be used:
+                    ''' The derivative function can also be selected using this as a marker
+                    ''' </summary>
+                    Public Enum TransferFunctionType
+                        none
+                        sigmoid
+                        HyperbolTangent
+                        BinaryThreshold
+                        RectifiedLinear
+                        Logistic
+                        StochasticBinary
+                        Gaussian
+                        Signum
+                    End Enum
+                    ''' <summary>
+                    ''' Returns a result from the transfer function indicated ; Non Derivative
+                    ''' </summary>
+                    ''' <param name="TransferFunct">Indicator for Transfer function selection</param>
+                    ''' <param name="Input">Input value for node/Neuron</param>
+                    ''' <returns>result</returns>
+                    Public Shared Function EvaluateTransferFunct(ByRef TransferFunct As TransferFunctionType, ByRef Input As Double) As Integer
+                        EvaluateTransferFunct = 0
+                        Select Case TransferFunct
+                            Case TransferFunctionType.none
+                                Return Input
+                            Case TransferFunctionType.sigmoid
+                                Return Sigmoid(Input)
+                            Case TransferFunctionType.HyperbolTangent
+                                Return HyperbolicTangent(Input)
+                            Case TransferFunctionType.BinaryThreshold
+                                Return BinaryThreshold(Input)
+                            Case TransferFunctionType.RectifiedLinear
+                                Return RectifiedLinear(Input)
+                            Case TransferFunctionType.Logistic
+                                Return Logistic(Input)
+                            Case TransferFunctionType.Gaussian
+                                Return Gaussian(Input)
+                            Case TransferFunctionType.Signum
+                                Return Signum(Input)
+                        End Select
+                    End Function
+
+                    ''' <summary>
+                    ''' Returns a result from the transfer function indicated ; Non Derivative
+                    ''' </summary>
+                    ''' <param name="TransferFunct">Indicator for Transfer function selection</param>
+                    ''' <param name="Input">Input value for node/Neuron</param>
+                    ''' <returns>result</returns>
+                    Public Shared Function EvaluateTransferFunctionDerivative(ByRef TransferFunct As TransferFunctionType, ByRef Input As Double) As Integer
+                        EvaluateTransferFunctionDerivative = 0
+                        Select Case TransferFunct
+                            Case TransferFunctionType.none
+                                Return Input
+                            Case TransferFunctionType.sigmoid
+                                Return SigmoidDerivitive(Input)
+                            Case TransferFunctionType.HyperbolTangent
+                                Return HyperbolicTangentDerivative(Input)
+                            Case TransferFunctionType.Logistic
+                                Return LogisticDerivative(Input)
+                            Case TransferFunctionType.Gaussian
+                                Return GaussianDerivative(Input)
+                        End Select
+                    End Function
+
+                    ''' <summary>
+                    ''' the step function rarely performs well except in some rare cases with (0,1)-encoded
+                    ''' binary data.
+                    ''' </summary>
+                    ''' <param name="Value"></param>
+                    ''' <returns></returns>
+                    ''' <remarks></remarks>
+                    Private Shared Function BinaryThreshold(ByRef Value As Double) As Double
+
+                        ' Z = Bias+ (Input*Weight)
+                        'TransferFunction
+                        'If Z > 0 then Y = 1
+                        'If Z < 0 then y = 0
+
+                        Return If(Value < 0 = True, 0, 1)
+                    End Function
+
+                    Private Shared Function Gaussian(ByRef x As Double) As Double
+                        Gaussian = Math.Exp((-x * -x) / 2)
+                    End Function
+
+                    Private Shared Function GaussianDerivative(ByRef x As Double) As Double
+                        GaussianDerivative = Gaussian(x) * (-x / (-x * -x))
+                    End Function
+
+                    Private Shared Function HyperbolicTangent(ByRef Value As Double) As Double
+                        ' TanH(x) = (Math.Exp(x) - Math.Exp(-x)) / (Math.Exp(x) + Math.Exp(-x))
+
+                        Return Math.Tanh(Value)
+                    End Function
+
+                    Private Shared Function HyperbolicTangentDerivative(ByRef Value As Double) As Double
+                        HyperbolicTangentDerivative = 1 - (HyperbolicTangent(Value) * HyperbolicTangent(Value)) * Value
+                    End Function
+
+                    'Linear Neurons
+                    ''' <summary>
+                    ''' in a liner neuron the weight(s) represent unknown values to be determined the
+                    ''' outputs could represent the known values of a meal and the inputs the items in the
+                    ''' meal and the weights the prices of the individual items There are no hidden layers
+                    ''' </summary>
+                    ''' <remarks>
+                    ''' answers are determined by determining the weights of the linear neurons the delta
+                    ''' rule is used as the learning rule: Weight = Learning rate * Input * LocalError of neuron
+                    ''' </remarks>
+                    Private Shared Function Linear(ByRef value As Double) As Double
+                        ' Output = Bias + (Input*Weight)
+                        Return value
+                    End Function
+
+                    'Non Linear neurons
+                    Private Shared Function Logistic(ByRef Value As Double) As Double
+                        'z = bias + (sum of all inputs ) * (input*weight)
+                        'output = Sigmoid(z)
+                        'derivative input = z/weight
+                        'derivative Weight = z/input
+                        'Derivative output = output*(1-Output)
+                        'learning rule = Sum of total training error* derivative input * derivative output * rootmeansquare of errors
+
+                        Return 1 / 1 + Math.Exp(-Value)
+                    End Function
+
+                    Private Shared Function LogisticDerivative(ByRef Value As Double) As Double
+                        'z = bias + (sum of all inputs ) * (input*weight)
+                        'output = Sigmoid(z)
+                        'derivative input = z/weight
+                        'derivative Weight = z/input
+                        'Derivative output = output*(1-Output)
+                        'learning rule = Sum of total training error* derivative input * derivative output * rootmeansquare of errors
+
+                        Return Logistic(Value) * (1 - Logistic(Value))
+                    End Function
+
+                    Private Shared Function RectifiedLinear(ByRef Value As Double) As Double
+                        'z = B + (input*Weight)
+                        'If Z > 0 then output = z
+                        'If Z < 0 then output = 0
+                        If Value < 0 = True Then
+
+                            Return 0
+                        Else
+                            Return Value
+                        End If
+                    End Function
+
+                    ''' <summary>
+                    ''' the log-sigmoid function constrains results to the range (0,1), the function is
+                    ''' sometimes said to be a squashing function in neural network literature. It is the
+                    ''' non-linear characteristics of the log-sigmoid function (and other similar activation
+                    ''' functions) that allow neural networks to model complex data.
+                    ''' </summary>
+                    ''' <param name="Value"></param>
+                    ''' <returns></returns>
+                    ''' <remarks>1 / (1 + Math.Exp(-Value))</remarks>
+                    Private Shared Function Sigmoid(ByRef Value As Integer) As Double
+                        'z = Bias + (Input*Weight)
+                        'Output = 1/1+e**z
+                        Return 1 / (1 + Math.Exp(-Value))
+                    End Function
+
+                    Private Shared Function SigmoidDerivitive(ByRef Value As Integer) As Double
+                        Return Sigmoid(Value) * (1 - Sigmoid(Value))
+                    End Function
+
+                    Private Shared Function Signum(ByRef Value As Integer) As Double
+                        'z = Bias + (Input*Weight)
+                        'Output = 1/1+e**z
+                        Return Math.Sign(Value)
+                    End Function
+
+                    Private Shared Function StochasticBinary(ByRef value As Double) As Double
+                        'Uncreated
+                        Return value
+                    End Function
+
+                End Structure
+
+            End Class
+
+            ''' <summary>
+            ''' Activation function used by the nodes in the layer
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public ActivationFunction As TransferFunctionType
+
+            ''' <summary>
+            ''' Usually 1/0
+            ''' </summary>
+            Public Bias As Integer
+
+            ''' <summary>
+            ''' Calculates Layer Error From Output Vector
+            ''' each scalar error output of the vector respective of its output
+            ''' </summary>
+            Public LayerError As Vector
+
+            ''' <summary>
+            ''' Type of layer (Input, Hidden, Output)
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public nLayerType As LayerType
+
+            ''' <summary>
+            ''' Collection of nodes
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public Nodes As List(Of Neuron)
+
+            ''' <summary>
+            ''' The number of nodes is stored to make iteration easier
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public ReadOnly Property NumberOfNodes As Integer
+                Get
+                    If Nodes IsNot Nothing Then
+                        NumberOfNodes = Nodes.Count
+                    Else
+                        NumberOfNodes = 0
+                    End If
+                End Get
+            End Property
+
+            ''' <summary>
+            ''' Executes Layer (Forwards Prop)
+            ''' </summary>
+            ''' <param name="Input">input vector</param>
+            ''' <returns>Output Vector for the layer</returns>
+            Public Function Execute(ByRef Input As Vector) As Vector
+                SetInput(Input)
+                ActivateLayer()
+                Return GetOutput()
+            End Function
+
+            ''' <summary>
+            ''' Returns Output as vector (as held in nodes at current state)
+            ''' </summary>
+            ''' <returns></returns>
+            Public Function GetOutput() As Vector
+                Dim NewVect As New Vector(New List(Of Double))
+                For Each ITEM In Nodes
+                    NewVect.values.Add(ITEM.output)
+                Next
+                Return NewVect
+            End Function
+
+            ''' <summary>
+            ''' Activates each node in the layer -
+            ''' Also the Layer is summed then activated and the single returned value is returned to Layer - output
+            ''' </summary>
+            ''' <remarks>layer to be summed to be passed to the inputs of the next layer</remarks>
+            Private Sub ActivateLayer()
+                Dim LayerTotal As Double = 0
+                For Each node As Neuron In Nodes
+                    'Sum Layer (NodeTotal = Input*Weight)
+                    LayerTotal += node.NodeTotal()
+                    'Activate Output (F(SumOfWeightedInputs)
+                    node.output = TransferFunction.EvaluateTransferFunct(TransferFunctionType.Sigmoid, LayerTotal) + Bias
+                Next
+            End Sub
+
+            ''' <summary>
+            ''' Sets input for the Layer:
+            ''' If input and nodes do not match will not be added
+            ''' </summary>
+            ''' <param name="Input"></param>
+            Private Sub SetInput(ByRef Input As Vector)
+                If Nodes.Count <> Input.values.Count Then
+
+                    'Skip
+                Else
+                    For i = 0 To Nodes.Count
+                        Nodes(i).SetInput(Input.values(i))
+                    Next
+                End If
+            End Sub
+
+            ''' <summary>
+            ''' Each layer consists of neurons(nodes) the training cases also use an input layer and an
+            ''' output layer
+            ''' </summary>
+            ''' <remarks></remarks>
+            Public Sub New()
+                Nodes = New List(Of Neuron)
+                Bias = 1
+            End Sub
+
+            Public Shared Function CreateLayer(ByRef nLayertype As LayerType, ByRef NodesNo As Integer, ByRef Activation As TransferFunctionType) As Layer
+                Dim layr As New Layer
+                layr.nLayerType = nLayertype
+                layr.ActivationFunction = Activation
+                For i = 1 To NodesNo
+                    Dim nde As New Neuron
+                    nde.CreateRandWeight(0, 1)
+                    layr.Nodes.Add(nde)
+                Next
+                Return layr
+            End Function
+
+            ''' <summary>
+            ''' deserialize object from Json
+            ''' </summary>
+            ''' <param name="Str">json</param>
+            ''' <returns></returns>
+            Public Shared Function FromJson(ByRef Str As String) As Layer
+                Try
+                    Dim Converter As New JavaScriptSerializer
+                    Dim diag As Layer = Converter.Deserialize(Of Layer)(Str)
+                    Return diag
+                Catch ex As Exception
+                    Dim Buttons As MessageBoxButtons = MessageBoxButtons.OK
+                    MessageBox.Show(ex.Message, "ERROR", Buttons)
+                End Try
+                Return Nothing
+            End Function
+
+            ''' <summary>
+            ''' Serializes object to json
+            ''' </summary>
+            ''' <returns> </returns>
+            Public Function ToJson() As String
+                Dim Converter As New JavaScriptSerializer
+                Return Converter.Serialize(Me)
+            End Function
+
+            ''' <summary>
+            ''' Given the desired / expected output vector for the layer
+            ''' the internal error is calculated as LAYERERRROR
+            ''' Each Neuron Error for the layer is also produced
+            ''' </summary>
+            ''' <param name="DesiredOutput"> Each Output Error Vector value  Corresponds to a node error
+            ''' Its error value is passed to calculate the individual neuron error</param>
+            Public Sub Recalculate(ByRef DesiredOutput As Vector)
+
+                'Calculate Node Errors for the layer
+                'Each Output Error Vector Corresponds to a node
+                'Its error value is passed to calculate the individual neuron error recalculating its new weight
+
+                Dim cnt As Integer = 0
+
+                For Each item In GetOutput.values
+
+                    For Each nde In Nodes
+                        nde.RecalculateWeight(GetOutput.values(cnt), DesiredOutput.values(cnt))
+                    Next
+                    cnt += 1
+                Next
+            End Sub
+
+        End Class
+
+        'Dim Delta As Double = learningRate * (NodeOutput - ExpectedOutput) * ExpectedOutput * DerivativeOfNodeOutput
+
+        ''' <summary>
+        ''' This is the Allowed Error threshold for the output,
+        ''' The output could ba a single value or a vector
+        ''' </summary>
+        Public ErrorThreshold As Double
+
+        Public iNetworkType As NetworkType = NetworkType.None
+
+        ''' <summary>
+        ''' Middle layer: This layer is the real thing behind the network. Without this layer,
+        ''' network would not be capable of solving complex problems. There can be any number or
+        ''' middle or hidden layers. But, for most of the tasks, one is sufficient. The number
+        ''' of neurons in this layer is crucial. There is no formula for calculating the number,
+        ''' just hit and trial works. This layer takes the input from input layer, does some
+        ''' calculations and forwards to the next layer, in most cases it is the output layer.
+        ''' </summary>
+        ''' <remarks>in a deep belief network there can be many hidden layers</remarks>
+        Public HiddenLayers As List(Of Layer)
+
+        ''' <summary>
+        ''' layer takes the inputs(the values you pass) and forwards it to hidden layer. You can
+        ''' just imagine input layer as a group of neurons whose sole task is to pass the
+        ''' numeric inputs to the next level. Input layer never processes data, it just hands
+        ''' over it.
+        ''' </summary>
+        ''' <remarks>there is only one layer for the input</remarks>
+        Public InputLayer As Layer
+
+        ''' <summary>
+        ''' Output layer: This layer consists of neurons which output the result to you. This
+        ''' layer takes the value from the previous layer, does calculations and gives the final
+        ''' result. Basically, this layer is just like hidden layer but instead of passing
+        ''' values to the next layer, the values are treated as output.
+        ''' </summary>
+        ''' <remarks>there is only one layer for the output</remarks>
+        Public OutputLayer As Layer
+
+        Public Sub New()
+            HiddenLayers = New List(Of Layer)
+        End Sub
+
+        ''' <summary>
+        ''' The number of hidden nodes to become effective is actually unknown yet a simple
+        ''' calculation can be used to determine an initial value which should be effective;
+        ''' </summary>
+        ''' <param name="NumbeOfInputNodes">the number of input node used in the network</param>
+        ''' <param name="NumberOfOutputNodes">the number of out put nodes in the network</param>
+        ''' <returns>a reasonable calculation for hidden nodes</returns>
+        ''' <remarks>
+        ''' Deep layer networks have multiple hidden layers with varied number of nodes
+        ''' </remarks>
+        Private Function CalculateNumberOfHiddenNodes(ByRef NumbeOfInputNodes As Integer, ByRef NumberOfOutputNodes As Integer) As Integer
+            CalculateNumberOfHiddenNodes = NumbeOfInputNodes + NumberOfOutputNodes / 2
+            If CalculateNumberOfHiddenNodes < NumberOfOutputNodes Then CalculateNumberOfHiddenNodes = NumberOfOutputNodes
+        End Function
+
+        ''' <summary>
+        ''' Create Neural Network
+        ''' </summary>
+        ''' <param name="InputNodes">number of required nodes</param>
+        ''' <param name="OutputNodes">Number of required nodes</param>
+        ''' <param name="InputTransferFunction">required transfer function</param>
+        ''' <param name="OutputFunction">output transfer function</param>
+        ''' <param name="ErrThreshold">threshold error measurement (used for training network)</param>
+        Public Sub New(ByRef InputNodes As Integer, OutputNodes As Integer,
+                       ByRef InputTransferFunction As TransferFunctionType, ByRef OutputFunction As TransferFunctionType,
+                       ByRef ErrThreshold As Double)
+            ErrorThreshold = ErrThreshold
+            Dim NoHidden As Integer = CalculateNumberOfHiddenNodes(InputNodes, OutputNodes)
+            InputLayer = New Layer
+            InputLayer = Layer.CreateLayer(LayerType.Input, InputNodes, InputTransferFunction)
+            HiddenLayers = New List(Of Layer)
+            For i = 1 To NoHidden
+                HiddenLayers.Add(Layer.CreateLayer(LayerType.Hidden, InputNodes, TransferFunctionType.Sigmoid))
             Next
-        Next
+            OutputLayer = New Layer
+            OutputLayer = Layer.CreateLayer(LayerType.Output, OutputNodes, OutputFunction)
+        End Sub
+        Public Enum LayerType
+            Input
+            Hidden
+            Output
+        End Enum
+        ''' <summary>
+        ''' Executes Networks (Single Iteration of Neural Network)
+        ''' </summary>
+        ''' <param name="Input">Input vector</param>
+        ''' <returns>Output Vector</returns>
+        Public MustOverride Function Execute(ByRef Input As Vector) As Vector
 
-        ' Initialize weightsHO with random values between -1 and 1.
-        weightsHO = New Double(hiddenLayerSize, outputLayerSize) {}
-        For i As Integer = 0 To hiddenLayerSize - 1
-            For j As Integer = 0 To outputLayerSize - 1
-                weightsHO(i, j) = 2 * random.NextDouble() - 1
+        ''' <summary>
+        ''' Executes Networks (Single Iteration of Neural Network)
+        ''' </summary>
+        ''' <param name="Input">Input vector</param>
+        ''' <returns>Output Vector</returns>
+        Public MustOverride Function Train(ByRef Input As Vector) As Vector
+
+        ''' <summary>
+        ''' deserialize object from Json
+        ''' </summary>
+        ''' <param name="Str">json</param>
+        ''' <returns></returns>
+        Public Shared Function FromJson(ByRef Str As String) As NeuralNetworkFactory
+            Try
+                Dim Converter As New JavaScriptSerializer
+                Dim diag As NeuralNetworkFactory = Converter.Deserialize(Of NeuralNetworkFactory)(Str)
+                Return diag
+            Catch ex As Exception
+                Dim Buttons As MessageBoxButtons = MessageBoxButtons.OK
+                MessageBox.Show(ex.Message, "ERROR", Buttons)
+            End Try
+            Return Nothing
+        End Function
+
+        ''' <summary>
+        ''' Serializes object to json
+        ''' </summary>
+        ''' <returns> </returns>
+        Public Function ToJson() As String
+            Dim Converter As New JavaScriptSerializer
+            Return Converter.Serialize(Me)
+        End Function
+
+    End Class
+
+    ''' <summary>
+    ''' The Perceptron Allows for a multi input vector to single output
+    ''' </summary>
+    Public Class Perceptron
+
+        Public Property Weights As Double() ' The weights of the perceptron
+
+        Private Function Sigmoid(x As Double) As Double ' The sigmoid activation function
+
+            Return 1 / (1 + Math.Exp(-x))
+        End Function
+
+        ''' <summary>
+        ''' the step function rarely performs well except in some rare cases with (0,1)-encoded
+        ''' binary data.
+        ''' </summary>
+        ''' <param name="Value"></param>
+        ''' <returns></returns>
+        ''' <remarks></remarks>
+        Private Shared Function BinaryThreshold(ByRef Value As Double) As Double
+
+            ' Z = Bias+ (Input*Weight)
+            'TransferFunction
+            'If Z > 0 then Y = 1
+            'If Z < 0 then y = 0
+
+            Return If(Value < 0 = True, 0, 1)
+        End Function
+
+
+
+        Public Sub New(NumberOfInputs As Integer) ' Constructor that initializes the weights and bias of the perceptron
+            CreateWeights(NumberOfInputs)
+
+        End Sub
+
+        Public Sub CreateWeights(NumberOfInputs As Integer) ' Constructor that initializes the weights and bias of the perceptron
+            Weights = New Double(NumberOfInputs - 1) {}
+            For i As Integer = 0 To NumberOfInputs - 1
+                Weights(i) = Rnd(1.0)
             Next
-        Next
-    End Sub
 
-    ' Private method for forward propagation (predicting output given input).
-    Public Function Forward(inputData As Double()) As Double()
-        ' Calculate activations of hidden layer neurons.
-        Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-        ApplyTransferFunction(hiddenLayerActivations)
+        End Sub
 
-        ' Calculate activations of output layer neurons.
-        Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-        ApplyTransferFunction(outputLayerActivations)
+        ' Function to calculate output
+        Public Function Compute(inputs As Double()) As Integer
+            CreateWeights(inputs.Count)
+            Dim sum = 0.0
 
-        Return outputLayerActivations
-    End Function
-
-    ' Private method to perform backpropagation and update weights during training.
-    Private Sub TrainOneSample(inputData As Double(), targetData As Double())
-        ' Perform forward propagation to calculate activations.
-        Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-        ApplyTransferFunction(hiddenLayerActivations)
-
-        Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-        ApplyTransferFunction(outputLayerActivations)
-
-        ' Calculate output layer errors.
-        Dim outputLayerErrors As Double() = CalculateOutputErrors(targetData, outputLayerActivations)
-
-        ' Calculate hidden layer errors.
-        Dim hiddenLayerErrors As Double() = CalculateHiddenErrors(outputLayerErrors, weightsHO)
-
-        ' Update weights using SGD optimization.
-        UpdateWeightsSGD(inputData, hiddenLayerActivations, outputLayerErrors, hiddenLayerErrors)
-    End Sub
-
-    ' Private method to calculate output layer errors.
-    Public Function CalculateOutputErrors(targetData As Double(), outputActivations As Double()) As Double()
-        Dim errors As Double() = New Double(outputLayerSize) {}
-        For i As Integer = 0 To outputLayerSize - 1
-            errors(i) = targetData(i) - outputActivations(i)
-        Next
-        Return errors
-    End Function
-
-    ' Private method to calculate hidden layer errors.
-    Public Function CalculateHiddenErrors(outputErrors As Double(), weightsHO As Double(,)) As Double()
-        ' Calculate hidden layer errors using backpropagation.
-        Dim hiddenLayerErrors As Double() = New Double(hiddenLayerSize) {}
-
-        For i As Integer = 0 To hiddenLayerSize - 1
-            For j As Integer = 0 To outputLayerSize - 1
-                hiddenLayerErrors(i) += outputErrors(j) * weightsHO(i, j)
+            ' Loop through inputs and calculate sum of weights times inputs
+            For i = 0 To inputs.Length - 1
+                sum += _Weights(i) * inputs(i)
             Next
-        Next
 
-        Return hiddenLayerErrors
-    End Function
+            ' Return 1 if sum is greater than 0, otherwise return -1
+            Return If(sum > 0, 1, -1)
+        End Function
 
-    ' Private method to update weights using SGD optimization.
-    Public Sub UpdateWeightsSGD(inputData As Double(), hiddenLayerActivations As Double(), outputErrors As Double(), hiddenErrors As Double())
-        ' Update weights using Stochastic Gradient Descent (SGD) optimization.
-        For i As Integer = 0 To hiddenLayerSize - 1
-            For j As Integer = 0 To outputLayerSize - 1
-                weightsHO(i, j) += learningRate * outputErrors(j) * hiddenLayerActivations(i)
+        Public Function ComputeSigmoid(inputs As Double()) As Double ' Compute the output of the perceptron given an input
+            CreateWeights(inputs.Count)
+            Dim sum As Double = 0
+            'Collect the sum of the inputs * Weight
+            For i As Integer = 0 To inputs.Length - 1
+                sum += inputs(i) * Weights(i)
             Next
-        Next
 
-        For i As Integer = 0 To inputLayerSize - 1
-            For j As Integer = 0 To hiddenLayerSize - 1
-                weightsIH(i, j) += learningRate * hiddenErrors(j) * inputData(i)
+            'Activate
+            'We Return the sigmoid of the sum to produce the output
+            Return Sigmoid(sum)
+        End Function
+
+        Public Function ComputeBinaryThreshold(inputs As Double()) As Double ' Compute the output of the perceptron given an input
+            CreateWeights(inputs.Count)
+            Dim sum As Double = 0 ' used to hold the output
+
+            'Collect the sum of the inputs * Weight
+            For i As Integer = 0 To inputs.Length - 1
+                sum += inputs(i) * Weights(i)
             Next
-        Next
-    End Sub
 
-    ' ... (existing code)
+            'Activate
+            'We Return the sigmoid of the sum to produce the output , Applying the Binary threshold funciton to it
+            Return BinaryThreshold(Sigmoid(sum))
+        End Function
 
-    ' Helper method to apply the transfer function to a matrix.
-    Public Sub ApplyTransferFunction(ByRef matrix As Double())
-        ' Apply the specified transfer function (e.g., Sigmoid, ReLU, Tanh) to the elements of the matrix.
-        For i As Integer = 0 To matrix.Length - 1
-            Select Case transferFunc
-                Case TransferFunction.Sigmoid
-                    matrix(i) = Sigmoid(matrix(i))
-                Case TransferFunction.ReLU
-                    matrix(i) = ReLU(matrix(i))
-                Case TransferFunction.Tanh
-                    matrix(i) = Tanh(matrix(i))
-                    ' Add more transfer functions if needed.
+        ' Function to train the perceptron
+        Public Sub Train(inputs As Double(), desiredOutput As Integer, threshold As Double, MaxEpochs As Integer, LearningRate As Double)
+            Dim guess = Compute(inputs)
+            Dim nError As Integer = 0
+            Dim CurrentEpoch = 0
+
+            Do Until threshold < nError Or
+                        CurrentEpoch = MaxEpochs
+                CurrentEpoch += 1
+
+                nError = desiredOutput - guess
+
+                ' Loop through inputs and update weights based on error and learning rate
+                For i = 0 To inputs.Length - 1
+                    _Weights(i) += LearningRate * nError * inputs(i)
+                Next
+
+            Loop
+
+        End Sub
+
+    End Class
+
+    Public Module NN_tests
+
+        ''' <summary>
+        ''' Here a single perceptron is used as a Layer
+        ''' </summary>
+        ''' <returns></returns>
+        Public Property Layers As List(Of Perceptron) ' The layers of the network
+
+        Public Function ComputePerceptronLayer(inputs As Double()) As Double ' Compute the output of the network given an input
+            Dim output As Double() = inputs
+            For Each layer In Layers
+                Dim newOutput(layer.Weights.Length - 1) As Double
+                For i As Integer = 0 To layer.Weights.Length - 1
+                    newOutput(i) = layer.ComputeSigmoid(output)
+                Next
+                output = newOutput
+            Next
+            Return output(0)
+        End Function
+
+        Public Sub TrainBackProp(inputs As Double()(), outputs As Double(), Optional learningRate As Double = 0.1) ' Train the network given a set of inputs and outputs
+            Dim errorThreshold As Double = 0.01 ' The error threshold at which to stop training
+            Dim nError As Double = 1 ' Initialize the error to a high value
+            While nError > errorThreshold ' Loop until the error is below the threshold
+                nError = 0 ' Reset the error to zero
+                For i As Integer = 0 To inputs.Length - 1 ' Loop through each input/output pair
+                    Dim output As Double = ComputePerceptronLayer(inputs(i)) ' Compute the output of the network for this input
+                    Dim delta As Double = learningRate * (outputs(i) - output) * output * (1 - output) ' Compute the delta for each weight and bias in the network
+                    '   Dim Delta2 As Double = learningRate * (NodeOutput - ExpectedOutput) * ExpectedOutput * DerivativeOfOutput
+                    For Each layer In Layers ' Loop through each layer in the network
+                        For j As Integer = 0 To layer.Weights.Length - 1 ' Loop through each weight in this layer
+                            layer.Weights(j) += delta * layer.ComputeSigmoid(inputs(i)) ' Update the weight based on this input and delta
+                        Next
+                        ' layer.Bias += delta ' Update the bias based on delta
+                    Next
+                    nError += Math.Abs(outputs(i) - output) ' Add the absolute difference between the actual output and predicted output to the total error
+                Next
+                nError /= inputs.Length ' Divide the total error by the number of input/output pairs to get the average error
+            End While
+        End Sub
+
+    End Module
+
+
+    Module helper
+        Public Function MultiplyMatrix(matrixA As Double(,), matrixB As Double(,)) As Double(,)
+            Dim rowsA As Integer = matrixA.GetLength(0)
+            Dim columnsA As Integer = matrixA.GetLength(1)
+            Dim rowsB As Integer = matrixB.GetLength(0)
+            Dim columnsB As Integer = matrixB.GetLength(1)
+
+            If columnsA <> rowsB Then
+                Throw New ArgumentException("Invalid matrix dimensions for multiplication.")
+            End If
+
+            Dim resultMatrix As Double(,) = New Double(rowsA - 1, columnsB - 1) {}
+            For i As Integer = 0 To rowsA - 1
+                For j As Integer = 0 To columnsB - 1
+                    Dim sum As Double = 0
+                    For k As Integer = 0 To columnsA - 1
+                        sum += matrixA(i, k) * matrixB(k, j)
+                    Next
+                    resultMatrix(i, j) = sum
+                Next
+            Next
+
+            Return resultMatrix
+        End Function
+        Public Sub PrintMatrix(matrix As Double(,))
+            Dim rows As Integer = matrix.GetLength(0)
+            Dim columns As Integer = matrix.GetLength(1)
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To columns - 1
+                    Console.Write(matrix(i, j) & " ")
+                Next
+                Console.WriteLine()
+            Next
+            Console.WriteLine()
+        End Sub
+
+
+    End Module
+    Public Class Tril
+        Public Sub Main()
+            Dim matrix(,) As Integer = {{1, 2, 3, 9}, {4, 5, 6, 8}, {7, 8, 9, 9}}
+
+            Dim result(,) As Integer = Tril(matrix)
+
+            Console.WriteLine("Matrix:")
+            PrintMatrix(matrix)
+
+            Console.WriteLine("Tril Result:")
+            PrintMatrix(result)
+            Console.ReadLine()
+        End Sub
+
+        Public Shared Function Tril(ByVal matrix(,) As Integer) As Integer(,)
+            Dim rows As Integer = matrix.GetLength(0)
+            Dim cols As Integer = matrix.GetLength(1)
+
+            Dim result(rows - 1, cols - 1) As Integer
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To cols - 1
+                    If j <= i Then
+                        result(i, j) = matrix(i, j)
+                    End If
+                Next
+            Next
+
+            Return result
+        End Function
+        Public Shared Function Tril(ByVal matrix(,) As Double) As Double(,)
+            Dim rows As Integer = matrix.GetLength(0)
+            Dim cols As Integer = matrix.GetLength(1)
+
+            Dim result(rows - 1, cols - 1) As Double
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To cols - 1
+                    If j <= i Then
+                        result(i, j) = matrix(i, j)
+                    End If
+                Next
+            Next
+
+            Return result
+        End Function
+        Public Shared Function Tril(ByVal matrix As List(Of List(Of Double))) As List(Of List(Of Double))
+            Dim rows As Integer = matrix.Count
+            Dim cols As Integer = matrix(0).Count
+
+            Dim result As New List(Of List(Of Double))
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To cols - 1
+                    If j <= i Then
+                        result(i)(j) = matrix(i)(j)
+                    End If
+                Next
+            Next
+
+            Return result
+        End Function
+        Public Shared Sub PrintMatrix(ByVal matrix(,) As Double)
+            Dim rows As Integer = matrix.GetLength(0)
+            Dim cols As Integer = matrix.GetLength(1)
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To cols - 1
+                    Console.Write(matrix(i, j) & " ")
+                Next
+                Console.WriteLine()
+            Next
+        End Sub
+        Public Shared Sub PrintMatrix(ByVal matrix(,) As Integer)
+            Dim rows As Integer = matrix.GetLength(0)
+            Dim cols As Integer = matrix.GetLength(1)
+
+            For i As Integer = 0 To rows - 1
+                For j As Integer = 0 To cols - 1
+                    Console.Write(matrix(i, j) & " ")
+                Next
+                Console.WriteLine()
+            Next
+        End Sub
+    End Class
+    Public Class Softmax
+        Public Shared Function Softmax(matrix2 As Integer(,)) As Double(,)
+            Dim numRows As Integer = matrix2.GetLength(0)
+            Dim numColumns As Integer = matrix2.GetLength(1)
+
+            Dim softmaxValues(numRows - 1, numColumns - 1) As Double
+
+            ' Compute softmax values for each row
+            For i As Integer = 0 To numRows - 1
+                Dim rowSum As Double = 0
+
+                ' Compute exponential values and sum of row elements
+                For j As Integer = 0 To numColumns - 1
+                    softmaxValues(i, j) = Math.Sqrt(Math.Exp(matrix2(i, j)))
+                    rowSum += softmaxValues(i, j)
+                Next
+
+                ' Normalize softmax values for the row
+                For j As Integer = 0 To numColumns - 1
+                    softmaxValues(i, j) /= rowSum
+                Next
+            Next
+
+            ' Display the softmax values
+            Console.WriteLine("Calculated:" & vbNewLine)
+            For i As Integer = 0 To numRows - 1
+                For j As Integer = 0 To numColumns - 1
+
+                    Console.Write(softmaxValues(i, j).ToString("0.0000") & " ")
+                Next
+                Console.WriteLine(vbNewLine & "---------------------")
+            Next
+            Return softmaxValues
+        End Function
+        Public Shared Sub Main()
+            Dim input() As Double = {1.0, 2.0, 3.0}
+
+            Dim output() As Double = Softmax(input)
+
+            Console.WriteLine("Input: {0}", String.Join(", ", input))
+            Console.WriteLine("Softmax Output: {0}", String.Join(", ", output))
+            Console.ReadLine()
+        End Sub
+
+        Public Shared Function Softmax(ByVal input() As Double) As Double()
+            Dim maxVal As Double = input.Max()
+
+            Dim exponentiated() As Double = input.Select(Function(x) Math.Exp(x - maxVal)).ToArray()
+
+            Dim sum As Double = exponentiated.Sum()
+
+            Dim softmaxOutput() As Double = exponentiated.Select(Function(x) x / sum).ToArray()
+
+            Return softmaxOutput
+        End Function
+    End Class
+    Public Class Vector
+        Public ReadOnly values As List(Of Double)
+        Public Function ApplyActivationFunction() As Vector
+            ' Apply the desired activation function to each value in the vector
+            Dim result As New List(Of Double)()
+
+            For Each value In values
+                result.Add(Sigmoid(value)) ' Applying Sigmoid activation function
+            Next
+
+            Return New Vector(result)
+        End Function
+
+        Private Function Sigmoid(x As Double) As Double
+            Return 1 / (1 + Math.Exp(-x))
+        End Function
+        Public Sub New(values As List(Of Double))
+            Me.values = values
+        End Sub
+
+        Public Function Add(other As Vector) As Vector
+            If values.Count <> other.values.Count Then
+                Throw New ArgumentException("Vector dimensions do not match.")
+            End If
+
+            Dim result As New List(Of Double)()
+
+            For i = 0 To values.Count - 1
+                result.Add(values(i) + other.values(i))
+            Next
+
+            Return New Vector(result)
+        End Function
+
+        Public Function Subtract(other As Vector) As Vector
+            If values.Count <> other.values.Count Then
+                Throw New ArgumentException("Vector dimensions do not match.")
+            End If
+
+            Dim result As New List(Of Double)()
+
+            For i = 0 To values.Count - 1
+                result.Add(values(i) - other.values(i))
+            Next
+
+            Return New Vector(result)
+        End Function
+
+        Public Function Multiply(scalar As Double) As Vector
+            Dim result As New List(Of Double)()
+
+            For Each value In values
+                result.Add(value * scalar)
+            Next
+
+            Return New Vector(result)
+        End Function
+
+        Public Function DotProduct(other As Vector) As Double
+            If values.Count <> other.values.Count Then
+                Throw New ArgumentException("Vector dimensions do not match.")
+            End If
+
+            Dim result As Double = 0
+
+            For i = 0 To values.Count - 1
+                result += values(i) * other.values(i)
+            Next
+
+            Return result
+        End Function
+
+        Public Function Norm() As Double
+            Dim sumOfSquares As Double = values.Sum(Function(value) value * value)
+            Return Math.Sqrt(sumOfSquares)
+        End Function
+
+        Public Overrides Function ToString() As String
+            Return $"[{String.Join(", ", values)}]"
+        End Function
+
+        ' New extended functionality
+
+        Public Function ElementWiseMultiply(other As Vector) As Vector
+            If values.Count <> other.values.Count Then
+                Throw New ArgumentException("Vector dimensions do not match.")
+            End If
+
+            Dim result As New List(Of Double)()
+
+            For i = 0 To values.Count - 1
+                result.Add(values(i) * other.values(i))
+            Next
+
+            Return New Vector(result)
+        End Function
+
+        Public Function ElementWiseDivide(other As Vector) As Vector
+            If values.Count <> other.values.Count Then
+                Throw New ArgumentException("Vector dimensions do not match.")
+            End If
+
+            Dim result As New List(Of Double)()
+
+            For i = 0 To values.Count - 1
+                result.Add(values(i) / other.values(i))
+            Next
+
+            Return New Vector(result)
+        End Function
+    End Class
+    Public Class Matrix
+        Public ReadOnly data As Double(,)
+
+        Public Sub New(matrixData As Double(,))
+            data = matrixData
+        End Sub
+        Public Function MultiplyVector(vector As Vector) As Vector
+            If data.GetLength(1) <> vector.values.Count Then
+                Throw New ArgumentException("Matrix columns do not match vector dimensions.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1) As Double
+
+            For i = 0 To numRows - 1
+                Dim sum As Double = 0
+                For j = 0 To numCols - 1
+                    sum += data(i, j) * vector.values(j)
+                Next
+                result(i) = sum
+            Next
+
+            Return New Vector(result.ToList)
+        End Function
+
+        Public Function Transpose() As Matrix
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+
+            Dim result(numCols - 1, numRows - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(j, i) = data(i, j)
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function Add(other As Matrix) As Matrix
+            If data.GetLength(0) <> other.data.GetLength(0) OrElse data.GetLength(1) <> other.data.GetLength(1) Then
+                Throw New ArgumentException("Matrix dimensions do not match.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = data(i, j) + other.data(i, j)
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function Subtract(other As Matrix) As Matrix
+            If data.GetLength(0) <> other.data.GetLength(0) OrElse data.GetLength(1) <> other.data.GetLength(1) Then
+                Throw New ArgumentException("Matrix dimensions do not match.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = data(i, j) - other.data(i, j)
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function Multiply(scalar As Double) As Matrix
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = data(i, j) * scalar
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function Multiply(other As Matrix) As Matrix
+            If data.GetLength(1) <> other.data.GetLength(0) Then
+                Throw New ArgumentException("Matrix dimensions do not match for multiplication.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = other.data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    Dim sum As Double = 0
+                    For k = 0 To data.GetLength(1) - 1
+                        sum += data(i, k) * other.data(k, j)
+                    Next
+                    result(i, j) = sum
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function ElementWiseMultiply(other As Matrix) As Matrix
+            If data.GetLength(0) <> other.data.GetLength(0) OrElse data.GetLength(1) <> other.data.GetLength(1) Then
+                Throw New ArgumentException("Matrix dimensions do not match.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = data(i, j) * other.data(i, j)
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Function ElementWiseDivide(other As Matrix) As Matrix
+            If data.GetLength(0) <> other.data.GetLength(0) OrElse data.GetLength(1) <> other.data.GetLength(1) Then
+                Throw New ArgumentException("Matrix dimensions do not match.")
+            End If
+
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = data(i, j) / other.data(i, j)
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+
+        Public Sub Display()
+            Dim numRows As Integer = data.GetLength(0)
+            Dim numCols As Integer = data.GetLength(1)
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    Console.Write(data(i, j).ToString("0.00") & " ")
+                Next
+                Console.WriteLine()
+            Next
+            Console.WriteLine()
+        End Sub
+
+        Public Shared Function GenerateRandomMatrix(numRows As Integer, numCols As Integer, minValue As Double, maxValue As Double) As Matrix
+            Dim rand As New Random()
+            Dim result(numRows - 1, numCols - 1) As Double
+
+            For i = 0 To numRows - 1
+                For j = 0 To numCols - 1
+                    result(i, j) = rand.NextDouble() * (maxValue - minValue) + minValue
+                Next
+            Next
+
+            Return New Matrix(result)
+        End Function
+    End Class
+    Public Class Tensor
+        Public values As Double()
+        Public shape As Integer()
+
+
+
+        Private Function GetSliceSize(sliceShape As Integer()) As Integer
+            Dim sliceSize As Integer = 1
+            For Each dimSize As Integer In sliceShape
+                sliceSize *= dimSize
+            Next
+
+            Return sliceSize
+        End Function
+        Public Sub New(values As Double(), shape As Integer())
+            Me.values = values
+            Me.shape = shape
+        End Sub
+        Public Function GetValue(indices As Integer()) As Double
+            Dim flattenedIndex As Integer = GetFlattenedIndex(indices)
+            Return values(flattenedIndex)
+        End Function
+        Public Sub SetValue(indices As Integer(), value As Double)
+            Dim flattenedIndex As Integer = GetFlattenedIndex(indices)
+            values(flattenedIndex) = value
+        End Sub
+        Public Function GetShape() As Integer()
+            Return shape
+        End Function
+        Public Function GetFlattenedIndex(indices As Integer()) As Integer
+            Dim flattenedIndex As Integer = 0
+            Dim stride As Integer = 1
+
+            For i As Integer = shape.Length - 1 To 0 Step -1
+                flattenedIndex += indices(i) * stride
+                stride *= shape(i)
+            Next i
+
+            Return flattenedIndex
+        End Function
+        Public Function Reshape(newShape As Integer()) As Tensor
+            If values.Length <> GetTotalSize() Then
+                Throw New InvalidOperationException("Cannot reshape tensor. Number of elements does not match the new shape.")
+            End If
+
+            Dim reshapedValues As Double() = New Double(GetTotalSize() - 1) {}
+            Array.Copy(values, reshapedValues, values.Length)
+
+            Return New Tensor(reshapedValues, newShape)
+        End Function
+        Public Function GetTotalSize() As Integer
+            Dim totalSize As Integer = 1
+            For Each dimSize As Integer In shape
+                totalSize *= dimSize
+            Next
+
+            Return totalSize
+        End Function
+
+        Public Function Add(tensor As Tensor) As Tensor
+            ValidateShapes(tensor)
+
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = values(i) + tensor.values(i)
+            Next i
+
+            Return New Tensor(resultValues, shape)
+        End Function
+
+        Public Function Subtract(tensor As Tensor) As Tensor
+            ValidateShapes(tensor)
+
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = values(i) - tensor.values(i)
+            Next i
+
+            Return New Tensor(resultValues, shape)
+        End Function
+
+        Public Function Multiply(tensor As Tensor) As Tensor
+            ValidateShapes(tensor)
+
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = values(i) * tensor.values(i)
+            Next i
+
+            Return New Tensor(resultValues, shape)
+        End Function
+
+        Public Function MultiplyScalar(scalar As Double) As Tensor
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = values(i) * scalar
+            Next i
+
+            Return New Tensor(resultValues, shape)
+        End Function
+
+        Public Function Transpose() As Tensor
+            If shape.Length <> 2 Then
+                Throw New InvalidOperationException("Cannot transpose tensor. Only 2-dimensional tensors are supported.")
+            End If
+
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            Dim resultShape As Integer() = {shape(1), shape(0)}
+
+            For i As Integer = 0 To shape(0) - 1
+                For j As Integer = 0 To shape(1) - 1
+                    resultValues(j * shape(0) + i) = values(i * shape(1) + j)
+                Next j
+            Next i
+
+            Return New Tensor(resultValues, resultShape)
+        End Function
+
+        Public Function Tril() As Tensor
+            If shape.Length <> 2 Then
+                Throw New InvalidOperationException("Cannot apply tril operation. Only 2-dimensional tensors are supported.")
+            End If
+
+            Dim resultValues As Double() = New Double(values.Length - 1) {}
+            Dim resultShape As Integer() = {shape(0), shape(1)}
+
+            For i As Integer = 0 To shape(0) - 1
+                For j As Integer = 0 To shape(1) - 1
+                    If j <= i Then
+                        resultValues(i * shape(1) + j) = values(i * shape(1) + j)
+                    End If
+                Next j
+            Next i
+
+            Return New Tensor(resultValues, resultShape)
+        End Function
+
+        Public Function Concat(tensor As Tensor, axis As Integer) As Tensor
+            If axis < 0 Or axis >= shape.Length Then
+                Throw New ArgumentException("Invalid axis value.")
+            End If
+
+            If shape.Length <> tensor.shape.Length Then
+                Throw New ArgumentException("Tensor shapes do not match.")
+            End If
+
+            For i As Integer = 0 To shape.Length - 1
+                If i = axis Then
+                    If shape(i) + tensor.shape(i) <> shape(i) Then
+                        Throw New ArgumentException("Tensor shapes do not match.")
+                    End If
+                ElseIf shape(i) <> tensor.shape(i) Then
+                    Throw New ArgumentException("Tensor shapes do not match.")
+                End If
+            Next i
+
+            Dim resultShape As Integer() = CType(shape.Clone(), Integer())
+            resultShape(axis) += tensor.shape(axis)
+
+            Dim resultSize As Integer = GetTotalSize()
+            Dim resultValues As Double() = New Double(resultSize - 1) {}
+
+            Dim stride As Integer = 1
+            For i As Integer = shape.Length - 1 To 0 Step -1
+                If i = axis Then
+                    stride *= resultShape(i)
+                End If
+                If i <> axis Then
+                    stride *= shape(i)
+                End If
+            Next i
+
+            Dim tensorIndices As Integer() = New Integer(shape.Length - 1) {}
+
+            For i As Integer = 0 To resultSize - 1
+                Dim tensorIndex As Integer = i \ stride
+                Dim tensorOffset As Integer = i Mod stride
+
+                If tensorIndex < shape(axis) Then
+                    resultValues(i) = values(i)
+                Else
+                    tensorIndices(axis) = tensorIndex - shape(axis)
+                    For j As Integer = 0 To shape.Length - 1
+                        If j <> axis Then
+                            tensorIndices(j) = tensorOffset \ stride
+                            tensorOffset = tensorOffset Mod stride
+                            stride = stride \ shape(j)
+                        End If
+                    Next j
+
+                    resultValues(i) = tensor.values(tensor.GetFlattenedIndex(tensorIndices))
+                End If
+            Next i
+
+            Return New Tensor(resultValues, resultShape)
+        End Function
+
+
+
+
+        Public Overrides Function ToString() As String
+            Dim result As String = ""
+            Dim indices As Integer() = New Integer(shape.Length - 1) {}
+            PrintTensorValues(result, indices, 0)
+
+            Return result
+        End Function
+
+        Private Sub PrintTensorValues(ByRef result As String, indices As Integer(), dimension As Integer)
+            Dim currentDimSize As Integer = shape(dimension)
+
+            For i As Integer = 0 To currentDimSize - 1
+                indices(dimension) = i
+
+                If dimension = shape.Length - 1 Then
+                    Dim flattenedIndex As Integer = GetFlattenedIndex(indices)
+                    result += values(flattenedIndex).ToString() + " "
+                Else
+                    PrintTensorValues(result, indices, dimension + 1)
+                End If
+
+                If i < currentDimSize - 1 Then
+                    result += ", "
+                End If
+            Next i
+
+            If dimension = 0 Then
+                result += Environment.NewLine
+            End If
+        End Sub
+
+        Private Sub ValidateShapes(tensor As Tensor)
+            If shape.Length <> tensor.shape.Length Then
+                Throw New ArgumentException("Tensor shapes do not match.")
+            End If
+
+            For i As Integer = 0 To shape.Length - 1
+                If shape(i) <> tensor.shape(i) Then
+                    Throw New ArgumentException("Tensor shapes do not match.")
+                End If
+            Next i
+        End Sub
+    End Class
+    Public Class Tensor(Of T)
+        Private values As T()
+        Private shape As Integer()
+        Public Function Slice(startIndices As Integer(), endIndices As Integer()) As Tensor(Of T)
+            Dim slicedShape As Integer() = New Integer(shape.Length - 1) {}
+            Dim slicedValuesCount As Integer = 1
+
+            For i As Integer = 0 To shape.Length - 1
+                Dim startIdx As Integer = startIndices(i)
+                Dim endIdx As Integer = endIndices(i)
+
+                If startIdx < 0 OrElse startIdx >= shape(i) OrElse endIdx < 0 OrElse endIdx >= shape(i) Then
+                    Throw New ArgumentException("Invalid slice indices.")
+                End If
+
+                slicedShape(i) = endIdx - startIdx + 1
+                slicedValuesCount *= slicedShape(i)
+            Next
+
+            Dim slicedValues As T() = New T(slicedValuesCount - 1) {}
+            Dim slicedIndices As Integer() = New Integer(shape.Length - 1) {}
+
+            For i As Integer = 0 To slicedValuesCount - 1
+                Dim valueIndex As Integer = GetFlattenedIndex(slicedIndices)
+                slicedValues(i) = values(valueIndex)
+
+                For j As Integer = shape.Length - 1 To 0 Step -1
+                    slicedIndices(j) += 1
+                    If slicedIndices(j) <= endIndices(j) Then
+                        Exit For
+                    End If
+                    slicedIndices(j) = startIndices(j)
+                Next
+            Next
+
+            Return New Tensor(Of T)(slicedValues, slicedShape)
+        End Function
+
+        Public Sub New(values As T(), shape As Integer())
+            Me.values = values
+            Me.shape = shape
+        End Sub
+
+        Public Function GetValue(indices As Integer()) As T
+            Dim flattenedIndex As Integer = GetFlattenedIndex(indices)
+            Return values(flattenedIndex)
+        End Function
+
+        Public Sub SetValue(indices As Integer(), value As T)
+            Dim flattenedIndex As Integer = GetFlattenedIndex(indices)
+            values(flattenedIndex) = value
+        End Sub
+
+        Public Function GetShape() As Integer()
+            Return shape
+        End Function
+
+        Public Function GetFlattenedIndex(indices As Integer()) As Integer
+            Dim flattenedIndex As Integer = 0
+            Dim stride As Integer = 1
+
+            For i As Integer = shape.Length - 1 To 0 Step -1
+                flattenedIndex += indices(i) * stride
+                stride *= shape(i)
+            Next i
+
+            Return flattenedIndex
+        End Function
+
+        Public Function Reshape(newShape As Integer()) As Tensor(Of T)
+            If values.Length <> GetTotalSize() Then
+                Throw New InvalidOperationException("Cannot reshape tensor. Number of elements does not match the new shape.")
+            End If
+
+            Dim reshapedValues As T() = New T(GetTotalSize() - 1) {}
+            Array.Copy(values, reshapedValues, values.Length)
+
+            Return New Tensor(Of T)(reshapedValues, newShape)
+        End Function
+
+        Public Function GetTotalSize() As Integer
+            Dim totalSize As Integer = 1
+            For Each dimSize As Integer In shape
+                totalSize *= dimSize
+            Next
+
+            Return totalSize
+        End Function
+
+        Public Function Add(tensor As Tensor(Of T)) As Tensor(Of T)
+            ValidateShapes(tensor)
+
+            Dim resultValues As T() = New T(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = AddValues(values(i), tensor.values(i))
+            Next i
+
+            Return New Tensor(Of T)(resultValues, shape)
+        End Function
+
+        Public Function Subtract(tensor As Tensor(Of T)) As Tensor(Of T)
+            ValidateShapes(tensor)
+
+            Dim resultValues As T() = New T(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = SubtractValues(values(i), tensor.values(i))
+            Next i
+
+            Return New Tensor(Of T)(resultValues, shape)
+        End Function
+
+        Public Function Multiply(tensor As Tensor(Of T)) As Tensor(Of T)
+            ValidateShapes(tensor)
+
+            Dim resultValues As T() = New T(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = MultiplyValues(values(i), tensor.values(i))
+            Next i
+
+            Return New Tensor(Of T)(resultValues, shape)
+        End Function
+
+        Public Function Divide(tensor As Tensor(Of T)) As Tensor(Of T)
+            ValidateShapes(tensor)
+
+            Dim resultValues As T() = New T(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = DivideValues(values(i), tensor.values(i))
+            Next i
+
+            Return New Tensor(Of T)(resultValues, shape)
+        End Function
+
+        Public Function Power(exponent As Double) As Tensor(Of T)
+            Dim resultValues As T() = New T(values.Length - 1) {}
+            For i As Integer = 0 To values.Length - 1
+                resultValues(i) = ExponentiateValue(values(i), exponent)
+            Next i
+
+            Return New Tensor(Of T)(resultValues, shape)
+        End Function
+
+        Private Sub ValidateShapes(tensor As Tensor(Of T))
+            Dim tensorShape As Integer() = tensor.GetShape()
+            If Not shape.SequenceEqual(tensorShape) Then
+                Throw New ArgumentException("Tensor shapes do not match.")
+            End If
+        End Sub
+
+        Private Function AddValues(value1 As T, value2 As T) As T
+            Dim convert1 As IConvertible = TryCast(value1, IConvertible)
+            Dim convert2 As IConvertible = TryCast(value2, IConvertible)
+
+            If convert1 Is Nothing OrElse convert2 Is Nothing Then
+                Throw New ArgumentException("Values cannot be converted to Double.")
+            End If
+
+            Dim doubleValue1 As Double = convert1.ToDouble(Nothing)
+            Dim doubleValue2 As Double = convert2.ToDouble(Nothing)
+
+            Dim resultValue As Double = doubleValue1 + doubleValue2
+            Return DirectCast(Convert.ChangeType(resultValue, GetType(T)), T)
+        End Function
+
+        Private Function SubtractValues(value1 As T, value2 As T) As T
+            Dim convert1 As IConvertible = TryCast(value1, IConvertible)
+            Dim convert2 As IConvertible = TryCast(value2, IConvertible)
+
+            If convert1 Is Nothing OrElse convert2 Is Nothing Then
+                Throw New ArgumentException("Values cannot be converted to Double.")
+            End If
+
+            Dim doubleValue1 As Double = convert1.ToDouble(Nothing)
+            Dim doubleValue2 As Double = convert2.ToDouble(Nothing)
+
+            Dim resultValue As Double = doubleValue1 - doubleValue2
+            Return DirectCast(Convert.ChangeType(resultValue, GetType(T)), T)
+        End Function
+
+        Private Function MultiplyValues(value1 As T, value2 As T) As T
+            Dim convert1 As IConvertible = TryCast(value1, IConvertible)
+            Dim convert2 As IConvertible = TryCast(value2, IConvertible)
+
+            If convert1 Is Nothing OrElse convert2 Is Nothing Then
+                Throw New ArgumentException("Values cannot be converted to Double.")
+            End If
+
+            Dim doubleValue1 As Double = convert1.ToDouble(Nothing)
+            Dim doubleValue2 As Double = convert2.ToDouble(Nothing)
+
+            Dim resultValue As Double = doubleValue1 * doubleValue2
+            Return DirectCast(Convert.ChangeType(resultValue, GetType(T)), T)
+        End Function
+
+        Private Function DivideValues(value1 As T, value2 As T) As T
+            Dim convert1 As IConvertible = TryCast(value1, IConvertible)
+            Dim convert2 As IConvertible = TryCast(value2, IConvertible)
+
+            If convert1 Is Nothing OrElse convert2 Is Nothing Then
+                Throw New ArgumentException("Values cannot be converted to Double.")
+            End If
+
+            Dim doubleValue1 As Double = convert1.ToDouble(Nothing)
+            Dim doubleValue2 As Double = convert2.ToDouble(Nothing)
+
+            Dim resultValue As Double = doubleValue1 / doubleValue2
+            Return DirectCast(Convert.ChangeType(resultValue, GetType(T)), T)
+        End Function
+
+        Private Function ExponentiateValue(value As T, exponent As Double) As T
+            Dim convert1 As IConvertible = TryCast(value, IConvertible)
+            If convert1 Is Nothing Then
+                Throw New ArgumentException("Value cannot be converted to Double.")
+            End If
+
+            Dim doubleValue As Double = convert1.ToDouble(Nothing)
+            Dim resultValue As Double = Math.Pow(doubleValue, exponent)
+            Return DirectCast(Convert.ChangeType(resultValue, GetType(T)), T)
+        End Function
+    End Class
+    Public Class FeedForwardNetwork
+        Public Class Layer
+            Public Neurons As List(Of Neuron)
+            ''' <summary>
+            ''' Serializes object to json
+            ''' </summary>
+            ''' <returns> </returns>
+            Public Function ToJson() As String
+                Dim Converter As New JavaScriptSerializer
+                Return Converter.Serialize(Me)
+            End Function
+
+            ''' <summary>
+            ''' Serializes Object to XML
+            ''' </summary>
+            ''' <param name="FileName"></param>
+            Public Sub ToXML(ByRef FileName As String)
+                Dim serialWriter As StreamWriter
+                serialWriter = New StreamWriter(FileName)
+                Dim xmlWriter As New XmlSerializer(Me.GetType())
+                xmlWriter.Serialize(serialWriter, Me)
+                serialWriter.Close()
+            End Sub
+            Public Sub New(size As Integer, inputsCount As Integer)
+                Neurons = New List(Of Neuron)()
+
+                For i As Integer = 0 To size - 1
+                    Dim neuron As New Neuron()
+                    neuron.Weight = New Double(inputsCount - 1) {}
+                    Neurons.Add(neuron)
+                Next
+            End Sub
+        End Class
+        Public Class Neuron
+            ''' <summary>
+            ''' Serializes object to json
+            ''' </summary>
+            ''' <returns> </returns>
+            Public Function ToJson() As String
+                Dim Converter As New JavaScriptSerializer
+                Return Converter.Serialize(Me)
+            End Function
+
+            ''' <summary>
+            ''' Serializes Object to XML
+            ''' </summary>
+            ''' <param name="FileName"></param>
+            Public Sub ToXML(ByRef FileName As String)
+                Dim serialWriter As StreamWriter
+                serialWriter = New StreamWriter(FileName)
+                Dim xmlWriter As New XmlSerializer(Me.GetType())
+                xmlWriter.Serialize(serialWriter, Me)
+                serialWriter.Close()
+            End Sub
+            Public Weight As Double()
+            Public Output As Double
+            Public iError As Double
+            Public Bias As Double
+            Public Sub SetInput(input As Double)
+                Output = input
+            End Sub
+
+            Public Sub ActivateNode(activation As TransferFunction.TransferFunctionType)
+                Output = TransferFunction.Activate(Output, activation)
+            End Sub
+        End Class
+        ''' <summary>
+        ''' Serializes object to json
+        ''' </summary>
+        ''' <returns> </returns>
+        Public Function ToJson() As String
+            Dim Converter As New JavaScriptSerializer
+            Return Converter.Serialize(Me)
+        End Function
+
+        ''' <summary>
+        ''' Serializes Object to XML
+        ''' </summary>
+        ''' <param name="FileName"></param>
+        Public Sub ToXML(ByRef FileName As String)
+            Dim serialWriter As StreamWriter
+            serialWriter = New StreamWriter(FileName)
+            Dim xmlWriter As New XmlSerializer(Me.GetType())
+            xmlWriter.Serialize(serialWriter, Me)
+            serialWriter.Close()
+        End Sub
+        Public Layers As List(Of List(Of Neuron))
+        Private ReadOnly network As FeedForwardNetwork
+        Private ReadOnly learningRate As Double
+        ''' <summary>
+        ''' Used to intitiate network
+        ''' </summary>
+        ''' <param name="layerSizes"></param>
+        Public Sub New(layerSizes As Integer())
+            Layers = New List(Of List(Of Neuron))()
+
+            ' Create the input layer
+            Dim inputLayer As New List(Of Neuron)()
+            For i As Integer = 0 To layerSizes(0) - 1
+                inputLayer.Add(New Neuron())
+            Next
+            Layers.Add(inputLayer)
+
+            ' Create the hidden layers and output layer
+            For i As Integer = 1 To layerSizes.Length - 1
+                Dim hiddenLayer As New List(Of Neuron)()
+                For j As Integer = 0 To layerSizes(i) - 1
+                    hiddenLayer.Add(New Neuron())
+                Next
+                Layers.Add(hiddenLayer)
+            Next
+        End Sub
+        ''' <summary>
+        ''' Used to train network
+        ''' </summary>
+        ''' <param name="network"></param>
+        ''' <param name="learningRate"></param>
+        Public Sub New(network As FeedForwardNetwork, learningRate As Double)
+            Me.network = network
+            Me.learningRate = learningRate
+        End Sub
+        ''' <summary>
+        ''' Used to load a trained network
+        ''' </summary>
+        ''' <param name="Network"></param>
+        Public Sub New(ByRef Network As FeedForwardNetwork)
+            Network = Network
+        End Sub
+        Public Sub SetInput(layerIndex As Integer, inputValues As Double())
+            Dim inputLayer As List(Of Neuron) = Layers(layerIndex)
+            If inputValues.Length <> inputLayer.Count Then
+                Throw New ArgumentException("Number of input values does not match the size of the input layer.")
+            End If
+
+            For i As Integer = 0 To inputValues.Length - 1
+                inputLayer(i).SetInput(inputValues(i))
+            Next
+        End Sub
+        Public Function GetOutput(layerIndex As Integer) As Double()
+            Dim outputLayer As List(Of Neuron) = Layers(layerIndex)
+            Dim outputValues(outputLayer.Count - 1) As Double
+
+            For i As Integer = 0 To outputValues.Length - 1
+                outputValues(i) = outputLayer(i).Output
+            Next
+
+            Return outputValues
+        End Function
+        Public Sub PropagateForward(activation As TransferFunction.TransferFunctionType)
+            For i As Integer = 1 To Layers.Count - 1
+                Dim currentLayer As List(Of Neuron) = Layers(i)
+                Dim previousLayer As List(Of Neuron) = Layers(i - 1)
+
+                For Each currentNeuron As Neuron In currentLayer
+                    Dim totalInput As Double = 0
+
+                    For j As Integer = 0 To previousLayer.Count - 1
+                        totalInput += previousLayer(j).Output * currentNeuron.Weight(j)
+                    Next
+
+                    currentNeuron.SetInput(totalInput)
+                    currentNeuron.ActivateNode(activation)
+                Next
+            Next
+        End Sub
+        Public Sub Train(inputs As Double()(), targets As Double()(), activation As TransferFunction.TransferFunctionType, epochs As Integer)
+            If inputs.Length <> targets.Length Then
+                Throw New ArgumentException("Number of input patterns does not match the number of target patterns.")
+            End If
+
+            For epoch As Integer = 1 To epochs
+                Dim totalLoss As Double = 0
+
+                For i As Integer = 0 To inputs.Length - 1
+                    Dim inputPattern As Double() = inputs(i)
+                    Dim targetPattern As Double() = targets(i)
+
+                    ' Set the input values
+                    network.SetInput(0, inputPattern)
+
+                    ' Propagate the inputs forward through the network
+                    network.PropagateForward(activation)
+
+                    ' Get the predicted output
+                    Dim outputPattern As Double() = network.GetOutput(network.Layers.Count - 1)
+
+                    ' Calculate the loss
+                    Dim loss As Double = 0
+                    For j As Integer = 0 To outputPattern.Length - 1
+                        loss += Math.Pow(targetPattern(j) - outputPattern(j), 2)
+                    Next
+                    totalLoss += loss
+
+                    ' Backpropagate the error and update the weights
+                    For j As Integer = network.Layers.Count - 1 To 1 Step -1
+                        Dim currentLayer As List(Of Neuron) = network.Layers(j)
+                        Dim previousLayer As List(Of Neuron) = network.Layers(j - 1)
+
+                        For Each currentNeuron As Neuron In currentLayer
+                            Dim ierror As Double
+
+                            If j = network.Layers.Count - 1 Then
+                                ' Output layer
+                                ierror = (targetPattern(currentLayer.IndexOf(currentNeuron)) - currentNeuron.Output) *
+                                        TransferFunction.Derivative(currentNeuron.Output, activation)
+                            Else
+                                ' Hidden layer
+                                ierror = 0
+                                For k As Integer = 0 To network.Layers(j + 1).Count - 1
+                                    Dim nextNeuron As Neuron = network.Layers(j + 1)(k)
+                                    ierror += nextNeuron.iError * nextNeuron.Weight(currentLayer.IndexOf(currentNeuron))
+                                Next
+                                ierror *= TransferFunction.Derivative(currentNeuron.Output, activation)
+                            End If
+
+                            currentNeuron.iError = ierror
+
+                            ' Update the weights
+                            For k As Integer = 0 To previousLayer.Count - 1
+                                Dim previousNeuron As Neuron = previousLayer(k)
+                                Dim weightDelta As Double = learningRate * ierror * previousNeuron.Output
+                                currentNeuron.Weight(k) += weightDelta
+                            Next
+                        Next
+                    Next
+                Next
+
+                ' Print the average loss for the epoch
+                Dim averageLoss As Double = totalLoss / inputs.Length
+                Console.WriteLine("Epoch {0}: Average Loss = {1}", epoch, averageLoss)
+            Next
+        End Sub
+        Public Sub StochasticGradientDescent(inputs As Double()(), targets As Double()(), activation As TransferFunction.TransferFunctionType, epochs As Integer)
+            If inputs.Length <> targets.Length Then
+                Throw New ArgumentException("Number of input patterns does not match the number of target patterns.")
+            End If
+
+            Dim random As New Random()
+
+            For epoch As Integer = 1 To epochs
+                Dim totalLoss As Double = 0
+
+                For i As Integer = 0 To inputs.Length - 1
+                    Dim index As Integer = random.Next(0, inputs.Length) ' Randomly select a pattern
+
+                    Dim inputPattern As Double() = inputs(index)
+                    Dim targetPattern As Double() = targets(index)
+
+                    ' Set the input values
+                    network.SetInput(0, inputPattern)
+
+                    ' Propagate the inputs forward through the network
+                    network.PropagateForward(activation)
+
+                    ' Get the predicted output
+                    Dim outputPattern As Double() = network.GetOutput(network.Layers.Count - 1)
+
+                    ' Calculate the loss
+                    Dim loss As Double = 0
+                    For j As Integer = 0 To outputPattern.Length - 1
+                        loss += Math.Pow(targetPattern(j) - outputPattern(j), 2)
+                    Next
+                    totalLoss += loss
+
+                    ' Backpropagate the error and update the weights
+                    BackpropagateError(targetPattern, activation)
+                    UpdateWeights()
+                Next
+
+                ' Print the average loss for the epoch
+                Dim averageLoss As Double = totalLoss / inputs.Length
+                Console.WriteLine("Epoch {0}: Average Loss = {1}", epoch, averageLoss)
+            Next
+        End Sub
+
+        Public Sub MiniBatchStochasticGradientDescent(inputs As Double()(), targets As Double()(), activation As TransferFunction.TransferFunctionType, epochs As Integer, batchSize As Integer)
+            If inputs.Length <> targets.Length Then
+                Throw New ArgumentException("Number of input patterns does not match the number of target patterns.")
+            End If
+
+            Dim random As New Random()
+
+            For epoch As Integer = 1 To epochs
+                Dim totalLoss As Double = 0
+
+                ' Shuffle the data
+                Dim shuffledIndices(inputs.Length - 1) As Integer
+                For i As Integer = 0 To inputs.Length - 1
+                    shuffledIndices(i) = i
+                Next
+                ShuffleArray(shuffledIndices)
+
+                ' Iterate over mini-batches
+                For start As Integer = 0 To inputs.Length - 1 Step batchSize
+                    Dim endIdx As Integer = Math.Min(start + batchSize - 1, inputs.Length - 1)
+
+                    ' Initialize accumulated gradients
+                    Dim accumulatedGradients As New Dictionary(Of Neuron, Double())
+
+                    ' Process each pattern in the mini-batch
+                    For i As Integer = start To endIdx
+                        Dim index As Integer = shuffledIndices(i)
+
+                        Dim inputPattern As Double() = inputs(index)
+                        Dim targetPattern As Double() = targets(index)
+
+                        ' Set the input values
+                        network.SetInput(0, inputPattern)
+
+                        ' Propagate the inputs forward through the network
+                        network.PropagateForward(activation)
+
+                        ' Get the predicted output
+                        Dim outputPattern As Double() = network.GetOutput(network.Layers.Count - 1)
+
+                        ' Calculate the loss
+                        Dim loss As Double = 0
+                        For j As Integer = 0 To outputPattern.Length - 1
+                            loss += Math.Pow(targetPattern(j) - outputPattern(j), 2)
+                        Next
+                        totalLoss += loss
+
+                        ' Accumulate gradients for each layer
+                        BackpropagateError(targetPattern, activation, accumulatedGradients)
+                    Next
+
+                    ' Update weights using accumulated gradients
+                    UpdateWeights(accumulatedGradients)
+                Next
+
+                ' Print the average loss for the epoch
+                Dim averageLoss As Double = totalLoss / inputs.Length
+                Console.WriteLine("Epoch {0}: Average Loss = {1}", epoch, averageLoss)
+            Next
+        End Sub
+        Private Sub BackpropagateError(targetPattern As Double(), activation As TransferFunction.TransferFunctionType, Optional ByRef accumulatedGradients As Dictionary(Of Neuron, Double()) = Nothing)
+            For j As Integer = network.Layers.Count - 1 To 1 Step -1
+                Dim currentLayer As List(Of Neuron) = network.Layers(j)
+                Dim previousLayer As List(Of Neuron) = network.Layers(j - 1)
+
+                For Each currentNeuron As Neuron In currentLayer
+                    Dim ierror As Double
+
+                    If j = network.Layers.Count - 1 Then
+                        ' Output layer
+                        ierror = (targetPattern(currentLayer.IndexOf(currentNeuron)) - currentNeuron.Output) *
+                                TransferFunction.Derivative(currentNeuron.Output, activation)
+                    Else
+                        ' Hidden layer
+                        ierror = 0
+                        For k As Integer = 0 To network.Layers(j + 1).Count - 1
+                            Dim nextNeuron As Neuron = network.Layers(j + 1)(k)
+                            ierror += nextNeuron.iError * nextNeuron.Weight(currentLayer.IndexOf(currentNeuron))
+                        Next
+                        ierror *= TransferFunction.Derivative(currentNeuron.Output, activation)
+                    End If
+
+                    currentNeuron.iError = ierror
+
+                    ' Accumulate gradients for weight updates
+                    If accumulatedGradients IsNot Nothing Then
+                        For k As Integer = 0 To previousLayer.Count - 1
+                            Dim previousNeuron As Neuron = previousLayer(k)
+                            Dim gradient As Double = ierror * previousNeuron.Output
+
+                            If accumulatedGradients.ContainsKey(currentNeuron) Then
+                                accumulatedGradients(currentNeuron)(k) += gradient
+                            Else
+                                accumulatedGradients(currentNeuron) = New Double(previousLayer.Count - 1) {}
+                                accumulatedGradients(currentNeuron)(k) = gradient
+                            End If
+                        Next
+                    End If
+                Next
+            Next
+        End Sub
+        Private Sub UpdateWeights(Optional ByRef accumulatedGradients As Dictionary(Of Neuron, Double()) = Nothing)
+            For j As Integer = network.Layers.Count - 1 To 1 Step -1
+                Dim currentLayer As List(Of Neuron) = network.Layers(j)
+                Dim previousLayer As List(Of Neuron) = network.Layers(j - 1)
+
+                For Each currentNeuron As Neuron In currentLayer
+                    If accumulatedGradients IsNot Nothing Then
+                        Dim gradients As Double() = accumulatedGradients(currentNeuron)
+
+                        For k As Integer = 0 To previousLayer.Count - 1
+                            Dim weightDelta As Double = learningRate * gradients(k)
+                            currentNeuron.Weight(k) += weightDelta
+                        Next
+                    Else
+                        For k As Integer = 0 To previousLayer.Count - 1
+                            Dim previousNeuron As Neuron = previousLayer(k)
+                            Dim weightDelta As Double = learningRate * currentNeuron.iError * previousNeuron.Output
+                            currentNeuron.Weight(k) += weightDelta
+                        Next
+                    End If
+
+                    ' Update bias weight
+                    Dim biasWeightDelta As Double = learningRate * currentNeuron.iError
+                    currentNeuron.Bias += biasWeightDelta
+                Next
+            Next
+        End Sub
+
+        Private Sub ShuffleArray(array As Integer())
+            Dim random As New Random()
+            Dim n As Integer = array.Length
+
+            While n > 1
+                n -= 1
+                Dim k As Integer = random.Next(n + 1)
+                Dim value As Integer = array(k)
+                array(k) = array(n)
+                array(n) = value
+            End While
+        End Sub
+    End Class
+    ''' <summary>
+    ''' Transfer Function used in the calculation of the following layer
+    ''' </summary>
+    Public Structure TransferFunction
+        Public Enum TransferFunctionType
+            Sigmoid
+            HyperbolicTangent
+            BinaryThreshold
+            RectifiedLinear
+            Logistic
+            StochasticBinary
+            Gaussian
+            Signum
+            None
+        End Enum
+
+        Public Shared Function Activate(input As Double, type As TransferFunctionType) As Double
+            Select Case type
+                Case TransferFunctionType.Sigmoid
+                    Return 1 / (1 + Math.Exp(-input))
+                Case TransferFunctionType.HyperbolicTangent
+                    Return Math.Tanh(input)
+                Case TransferFunctionType.BinaryThreshold
+                    Return If(input >= 0, 1, 0)
+                Case TransferFunctionType.RectifiedLinear
+                    Return Math.Max(0, input)
+                Case TransferFunctionType.Logistic
+                    Return 1 / (1 + Math.Exp(-input))
+                Case TransferFunctionType.StochasticBinary
+                    Return If(input >= 0, 1, 0)
+                Case TransferFunctionType.Gaussian
+                    Return Math.Exp(-(input * input))
+                Case TransferFunctionType.Signum
+                    Return Math.Sign(input)
+                Case Else
+                    Throw New ArgumentException("Invalid transfer function type.")
             End Select
-        Next
-    End Sub
+        End Function
 
-    ' Sigmoid activation function.
-    Public Function Sigmoid(x As Double) As Double
-        Return 1.0 / (1.0 + Math.Exp(-x))
-    End Function
+        Public Shared Function Derivative(output As Double, type As TransferFunctionType) As Double
+            Select Case type
+                Case TransferFunctionType.Sigmoid
+                    Return output * (1 - output)
+                Case TransferFunctionType.HyperbolicTangent
+                    Return 1 - (output * output)
+                Case TransferFunctionType.BinaryThreshold
+                    Return 1
+                Case TransferFunctionType.RectifiedLinear
+                    Return If(output > 0, 1, 0)
+                Case TransferFunctionType.Logistic
+                    Return output * (1 - output)
+                Case TransferFunctionType.StochasticBinary
+                    Return 1
+                Case TransferFunctionType.Gaussian
+                    Return -2 * output * Math.Exp(-(output * output))
+                Case TransferFunctionType.Signum
+                    Return 0
+                Case Else
+                    Throw New ArgumentException("Invalid transfer function type.")
+            End Select
+        End Function
 
-    ' ReLU activation function.
-    Public Function ReLU(x As Double) As Double
-        Return Math.Max(0, x)
-    End Function
+        ''' <summary>
+        ''' Returns a result from the transfer function indicated ; Non Derivative
+        ''' </summary>
+        ''' <param name="TransferFunct">Indicator for Transfer function selection</param>
+        ''' <param name="Input">Input value for node/Neuron</param>
+        ''' <returns>result</returns>
+        Public Shared Function EvaluateTransferFunct(ByRef TransferFunct As TransferFunctionType, ByRef Input As Double) As Integer
+            EvaluateTransferFunct = 0
+            Select Case TransferFunct
+                Case TransferFunctionType.None
+                    Return Input
+                Case TransferFunctionType.Sigmoid
+                    Return Sigmoid(Input)
+                Case TransferFunctionType.HyperbolicTangent
+                    Return HyperbolicTangent(Input)
+                Case TransferFunctionType.BinaryThreshold
+                    Return BinaryThreshold(Input)
+                Case TransferFunctionType.RectifiedLinear
+                    Return RectifiedLinear(Input)
+                Case TransferFunctionType.Logistic
+                    Return Logistic(Input)
+                Case TransferFunctionType.Gaussian
+                    Return Gaussian(Input)
+                Case TransferFunctionType.Signum
+                    Return Signum(Input)
+            End Select
+        End Function
 
-    ' Tanh activation function.
-    Public Function Tanh(x As Double) As Double
-        Return Math.Tanh(x)
-    End Function
+        ''' <summary>
+        ''' Returns a result from the transfer function indicated ; Non Derivative
+        ''' </summary>
+        ''' <param name="TransferFunct">Indicator for Transfer function selection</param>
+        ''' <param name="Input">Input value for node/Neuron</param>
+        ''' <returns>result</returns>
+        Public Shared Function EvaluateTransferFunctionDerivative(ByRef TransferFunct As TransferFunctionType, ByRef Input As Double) As Integer
+            EvaluateTransferFunctionDerivative = 0
+            Select Case TransferFunct
+                Case TransferFunctionType.None
+                    Return Input
+                Case TransferFunctionType.Sigmoid
+                    Return SigmoidDerivitive(Input)
+                Case TransferFunctionType.HyperbolicTangent
+                    Return HyperbolicTangentDerivative(Input)
+                Case TransferFunctionType.Logistic
+                    Return LogisticDerivative(Input)
+                Case TransferFunctionType.Gaussian
+                    Return GaussianDerivative(Input)
+            End Select
+        End Function
 
-    ' Helper method for matrix dot product.
-    Public Function MatrixDotProduct(matrixA As Double(), matrixB As Double(,)) As Double()
-        ' Perform matrix dot product between matrixA and matrixB.
-        Dim result As Double() = New Double(matrixB.GetLength(1) - 1) {}
-        For i As Integer = 0 To matrixA.Length - 1
-            For j As Integer = 0 To matrixB.GetLength(1) - 1
-                result(j) += matrixA(i) * matrixB(i, j)
+        ''' <summary>
+        ''' the step function rarely performs well except in some rare cases with (0,1)-encoded
+        ''' binary data.
+        ''' </summary>
+        ''' <param name="Value"></param>
+        ''' <returns></returns>
+        ''' <remarks></remarks>
+        Private Shared Function BinaryThreshold(ByRef Value As Double) As Double
+
+            ' Z = Bias+ (Input*Weight)
+            'TransferFunction
+            'If Z > 0 then Y = 1
+            'If Z < 0 then y = 0
+
+            Return If(Value < 0 = True, 0, 1)
+        End Function
+
+        Private Shared Function Gaussian(ByRef x As Double) As Double
+            Gaussian = Math.Exp((-x * -x) / 2)
+        End Function
+
+        Private Shared Function GaussianDerivative(ByRef x As Double) As Double
+            GaussianDerivative = Gaussian(x) * (-x / (-x * -x))
+        End Function
+
+        Private Shared Function HyperbolicTangent(ByRef Value As Double) As Double
+            ' TanH(x) = (Math.Exp(x) - Math.Exp(-x)) / (Math.Exp(x) + Math.Exp(-x))
+
+            Return Math.Tanh(Value)
+        End Function
+
+        Private Shared Function HyperbolicTangentDerivative(ByRef Value As Double) As Double
+            HyperbolicTangentDerivative = 1 - (HyperbolicTangent(Value) * HyperbolicTangent(Value)) * Value
+        End Function
+
+        'Linear Neurons
+        ''' <summary>
+        ''' in a liner neuron the weight(s) represent unknown values to be determined the
+        ''' outputs could represent the known values of a meal and the inputs the items in the
+        ''' meal and the weights the prices of the individual items There are no hidden layers
+        ''' </summary>
+        ''' <remarks>
+        ''' answers are determined by determining the weights of the linear neurons the delta
+        ''' rule is used as the learning rule: Weight = Learning rate * Input * LocalError of neuron
+        ''' </remarks>
+        Private Shared Function Linear(ByRef value As Double) As Double
+            ' Output = Bias + (Input*Weight)
+            Return value
+        End Function
+
+        'Non Linear neurons
+        Private Shared Function Logistic(ByRef Value As Double) As Double
+            'z = bias + (sum of all inputs ) * (input*weight)
+            'output = Sigmoid(z)
+            'derivative input = z/weight
+            'derivative Weight = z/input
+            'Derivative output = output*(1-Output)
+            'learning rule = Sum of total training error* derivative input * derivative output * rootmeansquare of errors
+
+            Return 1 / 1 + Math.Exp(-Value)
+        End Function
+
+        Private Shared Function LogisticDerivative(ByRef Value As Double) As Double
+            'z = bias + (sum of all inputs ) * (input*weight)
+            'output = Sigmoid(z)
+            'derivative input = z/weight
+            'derivative Weight = z/input
+            'Derivative output = output*(1-Output)
+            'learning rule = Sum of total training error* derivative input * derivative output * rootmeansquare of errors
+
+            Return Logistic(Value) * (1 - Logistic(Value))
+        End Function
+
+        Private Shared Function RectifiedLinear(ByRef Value As Double) As Double
+            'z = B + (input*Weight)
+            'If Z > 0 then output = z
+            'If Z < 0 then output = 0
+            If Value < 0 = True Then
+
+                Return 0
+            Else
+                Return Value
+            End If
+        End Function
+
+        ''' <summary>
+        ''' the log-sigmoid function constrains results to the range (0,1), the function is
+        ''' sometimes said to be a squashing function in neural network literature. It is the
+        ''' non-linear characteristics of the log-sigmoid function (and other similar activation
+        ''' functions) that allow neural networks to model complex data.
+        ''' </summary>
+        ''' <param name="Value"></param>
+        ''' <returns></returns>
+        ''' <remarks>1 / (1 + Math.Exp(-Value))</remarks>
+        Private Shared Function Sigmoid(ByRef Value As Integer) As Double
+            'z = Bias + (Input*Weight)
+            'Output = 1/1+e**z
+            Return 1 / (1 + Math.Exp(-Value))
+        End Function
+
+        Private Shared Function SigmoidDerivitive(ByRef Value As Integer) As Double
+            Return Sigmoid(Value) * (1 - Sigmoid(Value))
+        End Function
+
+        Private Shared Function Signum(ByRef Value As Integer) As Double
+            'z = Bias + (Input*Weight)
+            'Output = 1/1+e**z
+            Return Math.Sign(Value)
+        End Function
+
+        Private Shared Function StochasticBinary(ByRef value As Double) As Double
+            'Uncreated
+            Return value
+        End Function
+
+    End Structure
+
+
+    Public Class RNN
+        ''' <summary>
+        ''' Serializes object to json
+        ''' </summary>
+        ''' <returns> </returns>
+        Public Function ToJson() As String
+            Dim Converter As New JavaScriptSerializer
+            Return Converter.Serialize(Me)
+        End Function
+
+        ''' <summary>
+        ''' Serializes Object to XML
+        ''' </summary>
+        ''' <param name="FileName"></param>
+        Public Sub ToXML(ByRef FileName As String)
+            Dim serialWriter As StreamWriter
+            serialWriter = New StreamWriter(FileName)
+            Dim xmlWriter As New XmlSerializer(Me.GetType())
+            xmlWriter.Serialize(serialWriter, Me)
+            serialWriter.Close()
+        End Sub
+        Private inputSize As Integer
+        Private hiddenSize As Integer
+        Private outputSize As Integer
+        Private learningRate As Double
+        Private maxIterations As Integer
+
+        Private inputWeights As List(Of List(Of Double))
+        Private hiddenWeights As List(Of List(Of Double))
+
+        Public Sub New(ByVal inputSize As Integer, ByVal hiddenSize As Integer, ByVal outputSize As Integer, ByVal learningRate As Double, ByVal maxIterations As Integer)
+            Me.inputSize = inputSize
+            Me.hiddenSize = hiddenSize
+            Me.outputSize = outputSize
+            Me.learningRate = learningRate
+            Me.maxIterations = maxIterations
+
+            ' Initialize weights randomly
+            Me.inputWeights = InitializeWeights(inputSize, hiddenSize)
+            Me.hiddenWeights = InitializeWeights(hiddenSize, outputSize)
+        End Sub
+
+        Private Function InitializeWeights(ByVal inputSize As Integer, ByVal outputSize As Integer) As List(Of List(Of Double))
+            Dim weights As List(Of List(Of Double)) = New List(Of List(Of Double))
+            Dim random As Random = New Random()
+
+            For i As Integer = 0 To inputSize - 1
+                Dim row As List(Of Double) = New List(Of Double)
+                For j As Integer = 0 To outputSize - 1
+                    row.Add(random.NextDouble())
+                Next
+                weights.Add(row)
             Next
-        Next
-        Return result
-    End Function
-    ' Private method to update the network weights using the entire training dataset.
-    Public Sub TrainFullDataset(trainingData As List(Of Tuple(Of Double(), Double())))
-        For Each sample In trainingData
-            TrainOneSample(sample.Item1, sample.Item2)
-        Next
-    End Sub
 
+            Return weights
+        End Function
 
+        Public Sub Train(ByVal inputSequence As List(Of Double), ByVal targetOutput As List(Of Double))
+            Dim iteration As Integer = 0
+            Dim ierror As Double = Double.PositiveInfinity
 
-    ' Helper method for cloning the current neural network.
-    Public Function Clone() As NeuralNetwork
-        ' Create a deep copy of the current neural network.
-        Dim clonedNN As New NeuralNetwork(inputLayerSize, hiddenLayerSize, outputLayerSize, transferFunc, learningRate)
-        clonedNN.weightsIH = CType(weightsIH.Clone(), Double(,))
-        clonedNN.weightsHO = CType(weightsHO.Clone(), Double(,))
-        Return clonedNN
-    End Function
-End Class
-' Define the RecurrentNeuralNetwork class inheriting from the NeuralNetwork class.
-Public Class RecurrentNeuralNetwork
-    Inherits NeuralNetwork
+            While iteration < maxIterations AndAlso ierror > 0.001
+                ' Forward propagation
+                Dim hiddenLayerOutput As List(Of Double) = CalculateLayerOutput(inputSequence, inputWeights)
+                Dim outputLayerOutput As List(Of Double) = CalculateLayerOutput(hiddenLayerOutput, hiddenWeights)
 
-    ' Additional member for RNN: Number of time steps (sequence length).
-    Private timeSteps As Integer
+                ' Backpropagation
+                Dim outputError As List(Of Double) = SubtractVectors(targetOutput, outputLayerOutput)
+                Dim outputDelta As List(Of Double) = MultiplyVectorByScalar(outputError, ActivationDerivative(outputLayerOutput))
 
-    ' Constructor to initialize RNN-specific parameters.
-    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, timeSteps As Integer)
-        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-        Me.timeSteps = timeSteps
-    End Sub
+                Dim hiddenError As List(Of Double) = DotProduct(outputDelta, TransposeMatrix(hiddenWeights))
+                Dim hiddenDelta As List(Of Double) = MultiplyVectorByScalar(hiddenError, ActivationDerivative(hiddenLayerOutput))
 
-    ' Private method for forward propagation in RNN (predicting output given input sequence).
-    Public Function ForwardSequence(sequence As List(Of Double())) As List(Of Double())
-        ' Perform forward propagation for the entire sequence.
-        Dim outputSequence As New List(Of Double())()
+                ' Update weights
+                hiddenWeights = AddVectors(hiddenWeights, OuterProduct(hiddenLayerOutput, outputDelta))
+                inputWeights = AddVectors(inputWeights, OuterProduct(inputSequence, hiddenDelta))
 
-        ' Initial hidden state for the first time step.
-        Dim hiddenState As Double() = New Double(hiddenLayerSize) {}
+                ' Calculate total error
+                ierror = CalculateTotalError(targetOutput, outputLayerOutput)
 
-        ' Loop through each time step in the sequence.
-        For Each inputData In sequence
-            ' Calculate activations of hidden layer neurons.
-            Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-            ApplyTransferFunction(hiddenLayerActivations)
-
-            ' Calculate activations of output layer neurons.
-            Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-            ApplyTransferFunction(outputLayerActivations)
-
-            ' Update the hidden state for the next time step.
-            hiddenState = hiddenLayerActivations
-
-            ' Add the output activations of the current time step to the output sequence.
-            outputSequence.Add(outputLayerActivations)
-        Next
-
-        Return outputSequence
-    End Function
-
-    ' Private method to perform backpropagation and update weights during training for a sequence.
-    Public Sub TrainSequence(sequence As List(Of Double()), targetSequence As List(Of Double()))
-        ' Perform forward propagation to calculate activations for the entire sequence.
-        Dim outputSequence As List(Of Double()) = ForwardSequence(sequence)
-
-        ' Initialize the overall errors for each time step.
-        Dim overallOutputErrors(outputLayerSize) As Double
-
-        ' Loop through each time step in reverse to calculate errors and update weights.
-        For i As Integer = timeSteps - 1 To 0 Step -1
-            Dim outputErrors As Double() = CalculateOutputErrors(targetSequence(i), outputSequence(i))
-            overallOutputErrors = MatrixAdd(overallOutputErrors, outputErrors)
-
-            ' Calculate hidden layer errors.
-            Dim hiddenLayerErrors As Double() = CalculateHiddenErrors(overallOutputErrors, weightsHO)
-            Dim hiddenLayerActivations As Double() = MatrixDotProduct(sequence(i), weightsIH)
-            ' Update weights using SGD optimization.
-            UpdateWeightsSGD(sequence(i), hiddenLayerActivations, overallOutputErrors, hiddenLayerErrors)
-        Next
-    End Sub
-
-    ' Overriding the Train method for RNN training.
-    Public Overloads Function Train(trainingData As List(Of Tuple(Of List(Of Double()), List(Of Double())))) As RecurrentNeuralNetwork
-        ' Create a copy of the current RNN to train.
-        Dim trainedRNN As RecurrentNeuralNetwork = CType(Me.MemberwiseClone(), RecurrentNeuralNetwork)
-
-        ' Train the copy with the provided training sequences.
-        For Each sequenceData In trainingData
-            trainedRNN.TrainSequence(sequenceData.Item1, sequenceData.Item2)
-        Next
-
-        ' Return the trained RNN.
-        Return trainedRNN
-    End Function
-
-    ' ... (other existing code)
-
-    ' Helper method for matrix addition.
-    Private Function MatrixAdd(matrixA As Double(), matrixB As Double()) As Double()
-        ' Perform element-wise matrix addition between matrixA and matrixB.
-        Dim result As Double() = New Double(matrixA.Length - 1) {}
-        For i As Integer = 0 To matrixA.Length - 1
-            result(i) = matrixA(i) + matrixB(i)
-        Next
-        Return result
-    End Function
-End Class
-' Define the interface class to create and train neural network models.
-Public Class NeuralNetworkInterface
-
-    Inherits NeuralNetwork
-
-    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double)
-        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    End Sub
-    ''' <summary>
-    ''' Trains the Transformer decoder network using the tokenized and indexed training data.
-    ''' </summary>
-    ''' <param name="trainingData">A list of input sequences (tokenized and indexed).</param>
-    ''' <param name="labels">A list of target sequences (tokenized and indexed).</param>
-    ''' <param name="epochs">The number of training epochs.</param>
-    Public Sub TrainDecoder(trainingData As List(Of List(Of Integer)), labels As List(Of List(Of Integer)), epochs As Integer)
-        ' Implement the training process using the given training data and labels.
-        ' Apply backpropagation and stochastic gradient descent (SGD) optimization.
-        ' Use the specified number of epochs for training.
-    End Sub
-    ''' <summary>
-    ''' Trains the Transformer encoder network using the tokenized and indexed training data.
-    ''' </summary>
-    ''' <param name="trainingData">A list of input sequences (tokenized and indexed).</param>
-    ''' <param name="labels">A list of target sequences (tokenized and indexed).</param>
-    ''' <param name="epochs">The number of training epochs.</param>
-    Public Sub TrainEncoder(trainingData As List(Of List(Of Integer)), labels As List(Of List(Of Integer)), epochs As Integer)
-        ' Implement the training process using the given training data and labels.
-        ' Apply backpropagation and stochastic gradient descent (SGD) optimization.
-        ' Use the specified number of epochs for training.
-    End Sub
-    ''' <summary>
-    ''' Trains the Transformer encoder-decoder network using the tokenized and indexed training data.
-    ''' </summary>
-    ''' <param name="trainingData">A list of input sequences (tokenized and indexed).</param>
-    ''' <param name="labels">A list of target sequences (tokenized and indexed).</param>
-    ''' <param name="epochs">The number of training epochs.</param>
-    Public Sub TrainEncoderDecoder(trainingData As List(Of List(Of Integer)), labels As List(Of List(Of Integer)), epochs As Integer)
-        ' Implement the training process using the given training data and labels.
-        ' Apply backpropagation and stochastic gradient descent (SGD) optimization.
-        ' Use the specified number of epochs for training.
-    End Sub
-    ' Public method to train the network using SGD optimization.
-    Public Function Train(trainingData As List(Of Tuple(Of Double(), Double()))) As NeuralNetwork
-        ' Code to create a copy of the current network to train.
-        Dim trainedNetwork As NeuralNetwork = Me.Clone()
-
-        ' Train the copy with the provided training data.
-        trainedNetwork.TrainFullDataset(trainingData)
-
-        ' Return the trained network.
-        Return trainedNetwork
-    End Function
-
-    ' ... (existing code)
-End Class
-' Define the SoftmaxLayer class.
-Public Class SoftmaxLayer
-    ' Private member for the number of output neurons.
-    Private outputSize As Integer
-
-    ' Constructor to initialize SoftmaxLayer specific parameters.
-    Public Sub New(outputSize As Integer)
-        Me.outputSize = outputSize
-    End Sub
-
-    ' Public method for forward propagation with softmax output.
-    Public Function Forward(inputData As Double()) As Double()
-        ' Calculate activations of output layer neurons using softmax function.
-        Dim outputLayerActivations As Double() = Softmax(inputData)
-        Return outputLayerActivations
-    End Function
-
-    ' Private method for softmax function.
-    Private Function Softmax(inputData As Double()) As Double()
-        ' Compute the softmax function to get the output probabilities.
-        Dim maxVal As Double = inputData.Max()
-        Dim expScores As Double() = New Double(outputSize - 1) {}
-        Dim sumExpScores As Double = 0.0
-
-        For i As Integer = 0 To outputSize - 1
-            expScores(i) = Math.Exp(inputData(i) - maxVal)
-            sumExpScores += expScores(i)
-        Next
-
-        For i As Integer = 0 To outputSize - 1
-            expScores(i) /= sumExpScores
-        Next
-
-        Return expScores
-    End Function
-End Class
-Public Class NextWordPrediction
-    Public Shared Sub Run()
-        ' Sample training data for language modeling (a collection of sentences).
-        Dim trainingData As List(Of String) = New List(Of String) From
-            {
-                "The quick brown",
-                "She sells sea",
-                "To be or",
-                "A stitch in time",
-                "All that glitters is",
-                "Where there is smoke, there is"
-            }
-
-        ' Preprocess the training data and create vocabulary and token sequences.
-        Dim vocabulary As HashSet(Of String) = New HashSet(Of String)()
-        Dim tokenizedSentences As List(Of List(Of String)) = New List(Of List(Of String))()
-
-        For Each sentence As String In trainingData
-            Dim tokens() As String = sentence.Split(" "c)
-            For Each token As String In tokens
-                vocabulary.Add(token)
+                iteration += 1
+            End While
+        End Sub
+        Private Function CalculateLayerOutput(ByVal input As List(Of Double), ByVal weights As List(Of List(Of Double))) As List(Of Double)
+            Dim weightedSum As List(Of Double) = DotProduct(input, weights)
+            Return ActivationFunction(weightedSum)
+        End Function
+        Public Function Predict(ByVal inputSequence As List(Of Double)) As List(Of Double)
+            Dim hiddenLayerOutput As List(Of Double) = CalculateLayerOutput(inputSequence, inputWeights)
+            Dim outputLayerOutput As List(Of Double) = CalculateLayerOutput(hiddenLayerOutput, hiddenWeights)
+            Return outputLayerOutput
+        End Function
+        Private Function ActivationFunction(ByVal vector As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+            For Each val As Double In vector
+                result.Add(Math.Tanh(val))
             Next
-            tokenizedSentences.Add(tokens.ToList())
-        Next
-
-        ' Create a word-to-index mapping for the vocabulary.
-        Dim wordToIndex As Dictionary(Of String, Integer) = vocabulary.Select(Function(word, index) (word, index)).ToDictionary(Function(tuple) tuple.word, Function(tuple) tuple.index)
-
-        ' Convert token sequences into index sequences using the word-to-index mapping.
-        Dim indexSequences As List(Of List(Of Integer)) = tokenizedSentences.Select(Function(tokens) tokens.Select(Function(token) wordToIndex(token)).ToList()).ToList()
-
-        ' Define the vocabulary size and maximum sequence length.
-        Dim vocabSize As Integer = vocabulary.Count
-        Dim sequenceLength As Integer = tokenizedSentences.Max(Function(tokens) tokens.Count)
-
-        ' Create a recurrent neural network for next-word prediction with ReLU transfer function.
-        Dim languageModel As New RecurrentNeuralNetwork(inputSize:=vocabSize, hiddenSize:=50, outputSize:=vocabSize, transferFunc:=NeuralNetwork.TransferFunction.ReLU, learningRate:=0.01, timeSteps:=sequenceLength)
-
-        ' Train the language model using the tokenized and indexed training data.
-        ' ...
-
-        ' Sample input sequence for prediction (the beginning of a sentence).
-        Dim inputSequence As List(Of Double) = New List(Of Double) From {wordToIndex("The"), wordToIndex("quick")}
-
-        ' Generate the next word predictions using the trained language model.
-        Dim nextWordPredictions As Double() = languageModel.Forward(inputSequence.ToArray)
-
-        ' Find the index of the word with the highest predicted probability.
-        Dim nextWordIndex As Integer = Array.IndexOf(nextWordPredictions, nextWordPredictions.Max())
-
-        ' Convert the predicted index back to the actual word using the word-to-index mapping.
-        Dim predictedNextWord As String = wordToIndex.FirstOrDefault(Function(entry) entry.Value = nextWordIndex).Key
-
-        ' Display the next-word prediction for the input sequence.
-        Console.WriteLine($"Input Sequence: The quick")
-        Console.WriteLine($"Predicted Next Word: {predictedNextWord}")
-    End Sub
-End Class
-
-
-
-
-
-Namespace NOGOOD
-    '' Define the TransformerEncoderDecoderNetwork class inheriting from the NeuralNetwork class.
-    'Public Class TransformerEncoderDecoderNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Private member for the number of self-attention heads in the encoder.
-    '    Private encoderSelfAttentionHeads As Integer
-
-    '    ' Private member for the number of cross-attention heads in the decoder.
-    '    Private decoderCrossAttentionHeads As Integer
-
-    '    ' Private member for the size of the feed-forward layers.
-    '    Private feedForwardSize As Integer
-
-    '    ' Constructor to initialize TransformerEncoderDecoderNetwork specific parameters.
-    '    Public Sub New(encoderInputSize As Integer, decoderInputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, encoderSelfAttentionHeads As Integer, decoderCrossAttentionHeads As Integer, feedForwardSize As Integer)
-    '        MyBase.New(encoderInputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.encoderSelfAttentionHeads = encoderSelfAttentionHeads
-    '        Me.decoderCrossAttentionHeads = decoderCrossAttentionHeads
-    '        Me.feedForwardSize = feedForwardSize
-    '        Me.decoderInputSize = decoderInputSize
-    '    End Sub
-
-    '    ' Override the BuildModel method to create the Transformer encoder-decoder architecture.
-    '    Protected Overrides Sub BuildModel()
-    '        ' Add the self-attention layer in the encoder.
-    '        Me.AddLayer(New SelfAttentionLayer(inputSize:=Me.hiddenSize, attentionHeads:=Me.encoderSelfAttentionHeads))
-
-    '        ' Add the cross-attention layer in the decoder.
-    '        Me.AddLayer(New CrossAttentionLayer(inputSize:=Me.hiddenSize, attentionHeads:=Me.decoderCrossAttentionHeads))
-
-    '        ' Add a feed-forward layer with ReLU activation in the encoder.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.hiddenSize, hiddenSize:=Me.feedForwardSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add another feed-forward layer with ReLU activation in the encoder.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.feedForwardSize, hiddenSize:=Me.hiddenSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add the output layer with softmax activation in the decoder.
-    '        Me.AddLayer(New SoftmaxLayer(outputSize:=Me.outputSize))
-    '    End Sub
-    'End Class
-    'Public Class MachineTranslation
-    '    Public Shared Sub Run()
-    '        ' Sample training data for machine translation (English to French).
-    '        Dim englishSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "The quick brown fox jumps over the lazy dog.",
-    '            "She sells sea shells by the sea shore.",
-    '            "To be or not to be, that is the question.",
-    '            "A stitch in time saves nine.",
-    '            "All that glitters is not gold.",
-    '            "Where there is smoke, there is fire."
-    '        }
-
-    '        Dim frenchSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "Le renard brun rapide saute par-dessus le chien paresseux.",
-    '            "Elle vend des coquillages au bord de la mer.",
-    '            "Être ou ne pas être, telle est la question.",
-    '            "Un point à temps en sauve neuf.",
-    '            "Tout ce qui brille n'est pas de l'or.",
-    '            "Où il y a de la fumée, il y a du feu."
-    '        }
-
-    '        ' Preprocess the training data and create vocabulary and token sequences for both English and French.
-    '        ' ...
-
-    '        ' Define the vocabulary sizes for both English and French.
-    '        Dim englishVocabSize As Integer = englishVocabulary.Count
-    '        Dim frenchVocabSize As Integer = frenchVocabulary.Count
-
-    '        ' Define the maximum sequence lengths for both English and French.
-    '        Dim englishMaxSequenceLength As Integer = englishTokenizedSentences.Max(Function(tokens) tokens.Count)
-    '        Dim frenchMaxSequenceLength As Integer = frenchTokenizedSentences.Max(Function(tokens) tokens.Count)
-
-    '        ' Create a Transformer encoder network for machine translation.
-    '        Dim transformerEncoder As New TransformerEncoderNetwork(inputSize:=englishVocabSize, hiddenSize:=256, outputSize:=frenchVocabSize, transferFunc:=TransferFunction.ReLU, learningRate:=0.01, attentionHeads:=8, feedForwardSize:=512)
-
-    '        ' Train the Transformer encoder network using the tokenized and indexed training data.
-    '        ' ...
-
-    '        ' Sample input sequence for translation (English sentence).
-    '        Dim englishInputSequence As List(Of Integer) = New List(Of Integer) From {englishWordToIndex("The"), englishWordToIndex("quick"), englishWordToIndex("brown"), englishWordToIndex("fox")}
-
-    '        ' Generate the translation using the trained Transformer encoder.
-    '        Dim frenchTranslationIndices As List(Of Integer) = transformerEncoder.Forward(englishInputSequence.ToArray()).ToList()
-
-    '        ' Convert the predicted French indices back to the actual words using the French index-to-word mapping.
-    '        Dim frenchTranslation As List(Of String) = frenchTranslationIndices.Select(Function(index) frenchIndexToWord(index)).ToList()
-
-    '        ' Display the translation for the input English sentence.
-    '        Console.WriteLine($"Input Sentence: The quick brown fox")
-    '        Console.WriteLine($"Translated Sentence: {String.Join(" ", frenchTranslation)}")
-    '    End Sub
-    'End Class
-    '' Define a use case for these models: Image Classification.
-    'Public Class ImageClassification
-    '    Public Shared Sub Run()
-    '        ' Sample image data (features).
-    '        Dim imageData As Double() = New Double() {0.5, 0.8, 0.3, 0.1, 0.9}
-
-    '        ' Create a neural network for image classification using Sigmoid transfer function.
-    '        Dim imageClassifier As New NeuralNetwork(inputSize:=5, hiddenSize:=10, outputSize:=3, transferFunc:=NeuralNetwork.TransferFunction.Sigmoid, learningRate:=0.01)
-
-    '        ' Train the neural network with some labeled data (features and targets).
-    '        ' ...
-
-    '        ' Perform image classification using the trained neural network.
-    '        Dim predictedProbabilities As Double() = imageClassifier.Forward(imageData)
-
-    '        ' Display the predicted probabilities for each class.
-    '        Console.WriteLine("Predicted Probabilities:")
-    '        For i As Integer = 0 To predictedProbabilities.Length - 1
-    '            Console.WriteLine($"Class {i + 1}: {predictedProbabilities(i)}")
-    '        Next
-
-    '        ' Create a recurrent neural network for sequential image classification using ReLU transfer function.
-    '        Dim sequentialImageClassifier As New RecurrentNeuralNetwork(inputSize:=5, hiddenSize:=10, outputSize:=3, transferFunc:=NeuralNetwork.TransferFunction.ReLU, learningRate:=0.01, timeSteps:=4)
-
-    '        ' Train the recurrent neural network with sequential data.
-    '        ' ...
-
-    '        ' Perform sequential image classification using the trained recurrent neural network.
-    '        Dim sequentialImageData As List(Of Double()) = New List(Of Double()) From
-    '            {
-    '                New Double() {0.5, 0.8, 0.3, 0.1, 0.9},
-    '                New Double() {0.3, 0.6, 0.2, 0.5, 0.7},
-    '                New Double() {0.2, 0.7, 0.4, 0.6, 0.8},
-    '                New Double() {0.1, 0.5, 0.3, 0.7, 0.6}
-    '            }
-
-    '        Dim predictedProbabilitiesSeq As List(Of Double()) = sequentialImageClassifier.ForwardSequence(sequentialImageData)
-
-    '        ' Display the predicted probabilities for each class at each time step.
-    '        Console.WriteLine("Predicted Probabilities (Sequential):")
-    '        For t As Integer = 0 To predictedProbabilitiesSeq.Count - 1
-    '            Console.WriteLine($"Time Step {t + 1}:")
-    '            For i As Integer = 0 To predictedProbabilitiesSeq(t).Length - 1
-    '                Console.WriteLine($"Class {i + 1}: {predictedProbabilitiesSeq(t)(i)}")
-    '            Next
-    '        Next
-
-    '        ' Create a self-attention neural network for image classification using Tanh transfer function.
-    '        Dim selfAttentionImageClassifier As New SelfAttentionNeuralNetwork(inputSize:=5, hiddenSize:=10, outputSize:=3, transferFunc:=NeuralNetwork.TransferFunction.Tanh, learningRate:=0.01, attentionHeads:=2)
-
-    '        ' Train the self-attention neural network with attention mechanism.
-    '        ' ...
-
-    '        ' Perform image classification using the trained self-attention neural network.
-    '        Dim predictedProbabilitiesAttention As Double() = selfAttentionImageClassifier.Forward(imageData)
-
-    '        ' Display the predicted probabilities for each class with attention mechanism.
-    '        Console.WriteLine("Predicted Probabilities (Attention):")
-    '        For i As Integer = 0 To predictedProbabilitiesAttention.Length - 1
-    '            Console.WriteLine($"Class {i + 1}: {predictedProbabilitiesAttention(i)}")
-    '        Next
-
-    '        ' Create a masked self-attention neural network for sequential image classification using ReLU transfer function.
-    '        Dim maskedSelfAttentionSequentialImageClassifier As New MaskedSelfAttentionNeuralNetwork(inputSize:=5, hiddenSize:=10, outputSize:=3, transferFunc:=NeuralNetwork.TransferFunction.ReLU, learningRate:=0.01, attentionHeads:=2)
-
-    '        ' Train the masked self-attention neural network with masked attention mechanism.
-    '        ' ...
-
-    '        ' Perform sequential image classification using the trained masked self-attention neural network.
-    '        Dim predictedProbabilitiesMaskedAttention As List(Of Double()) = maskedSelfAttentionSequentialImageClassifier.ForwardSequence(sequentialImageData)
-
-    '        ' Display the predicted probabilities for each class at each time step with masked attention.
-    '        Console.WriteLine("Predicted Probabilities (Masked Attention):")
-    '        For t As Integer = 0 To predictedProbabilitiesMaskedAttention.Count - 1
-    '            Console.WriteLine($"Time Step {t + 1}:")
-    '            For i As Integer = 0 To predictedProbabilitiesMaskedAttention(t).Length - 1
-    '                Console.WriteLine($"Class {i + 1}: {predictedProbabilitiesMaskedAttention(t)(i)}")
-    '            Next
-    '        Next
-
-    '        ' Create a multi-head attention neural network for image classification using Sigmoid transfer function.
-    '        Dim multiHeadAttentionImageClassifier As New MultiHeadAttentionNeuralNetwork(inputSize:=5, hiddenSize:=10, outputSize:=3, transferFunc:=NeuralNetwork.TransferFunction.Sigmoid, learningRate:=0.01, attentionHeads:=3, useMask:=True)
-
-    '        ' Train the multi-head attention neural network with masked and multi-head attention mechanism.
-    '        ' ...
-
-    '        ' Perform image classification using the trained multi-head attention neural network.
-    '        Dim predictedProbabilitiesMultiHead As Double() = multiHeadAttentionImageClassifier.Forward(imageData)
-
-    '        ' Display the predicted probabilities for each class with multi-head attention and mask.
-    '        Console.WriteLine("Predicted Probabilities (Multi-Head Attention with Mask):")
-    '        For i As Integer = 0 To predictedProbabilitiesMultiHead.Length - 1
-    '            Console.WriteLine($"Class {i + 1}: {predictedProbabilitiesMultiHead(i)}")
-    '        Next
-    '    End Sub
-    'End Class
-    '' Define the MultiHeadAttentionNeuralNetwork class inheriting from the NeuralNetwork class.
-    'Public Class MultiHeadAttentionNeuralNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Additional members for Multi-Head Attention: Number of attention heads and the mask flag.
-    '    Private attentionHeads As Integer
-    '    Private useMask As Boolean
-
-    '    ' Constructor to initialize Multi-Head Attention specific parameters.
-    '    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, attentionHeads As Integer, useMask As Boolean)
-    '        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.attentionHeads = attentionHeads
-    '        Me.useMask = useMask
-    '    End Sub
-
-    '    ' Private method for Multi-Head Attention mechanism.
-    '    Private Function MultiHeadAttention(inputData As Double()) As Double()
-    '        ' Calculate activations of hidden layer neurons.
-    '        Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-    '        ApplyTransferFunction(hiddenLayerActivations)
-
-    '        ' Apply Multi-Head Attention mechanism to the hidden layer activations.
-    '        hiddenLayerActivations = ApplyMultiHeadAttention(hiddenLayerActivations)
-
-    '        ' Calculate activations of output layer neurons.
-    '        Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-    '        ApplyTransferFunction(outputLayerActivations)
-
-    '        Return outputLayerActivations
-    '    End Function
-
-    '    ' Private method to apply Multi-Head Attention mechanism.
-    '    Private Function ApplyMultiHeadAttention(hiddenLayerActivations As Double()) As Double()
-    '        ' Split the hidden layer activations into multiple heads.
-    '        Dim headSize As Integer = hiddenLayerSize \ attentionHeads
-    '        Dim splitHeads(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                splitHeads(head, i) = hiddenLayerActivations(head * headSize + i)
-    '            Next
-    '        Next
-
-    '        ' Perform Multi-Head Attention within each attention head.
-    '        Dim scaledAttentionOutputs(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                If useMask Then
-    '                    scaledAttentionOutputs(head, i) = PerformScaledDotProductMaskedAttention(splitHeads(head, i), splitHeads(head, 0 To headSize - 1), headSize, i)
-    '                Else
-    '                    scaledAttentionOutputs(head, i) = PerformScaledDotProductAttention(splitHeads(head, i), splitHeads(head, 0 To headSize - 1))
-    '                End If
-    '            Next
-    '        Next
-
-    '        ' Concatenate the attention outputs from all heads.
-    '        Dim concatenatedAttentionOutputs As Double() = New Double(hiddenLayerSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                concatenatedAttentionOutputs(head * headSize + i) = scaledAttentionOutputs(head, i)
-    '            Next
-    '        Next
-
-    '        Return concatenatedAttentionOutputs
-    '    End Function
-
-
-
-    'End Class
-    '' Define the SelfAttentionNeuralNetwork class inheriting from the NeuralNetwork class.
-    'Public Class SelfAttentionNeuralNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Additional member for Self-Attention: Number of attention heads.
-    '    Private attentionHeads As Integer
-
-    '    ' Constructor to initialize Self-Attention specific parameters.
-    '    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, attentionHeads As Integer)
-    '        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.attentionHeads = attentionHeads
-    '    End Sub
-
-    '    ' Private method for Self-Attention mechanism.
-    '    Private Function SelfAttention(inputData As Double()) As Double()
-    '        ' Calculate activations of hidden layer neurons.
-    '        Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-    '        ApplyTransferFunction(hiddenLayerActivations)
-
-    '        ' Apply Self-Attention mechanism to the hidden layer activations.
-    '        hiddenLayerActivations = ApplySelfAttention(hiddenLayerActivations)
-
-    '        ' Calculate activations of output layer neurons.
-    '        Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-    '        ApplyTransferFunction(outputLayerActivations)
-
-    '        Return outputLayerActivations
-    '    End Function
-
-    '    ' Private method to apply Self-Attention mechanism.
-    '    Private Function ApplySelfAttention(hiddenLayerActivations As Double()) As Double()
-    '        ' Split the hidden layer activations into multiple heads.
-    '        Dim headSize As Integer = hiddenLayerSize \ attentionHeads
-    '        Dim splitHeads(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                splitHeads(head, i) = hiddenLayerActivations(head * headSize + i)
-    '            Next
-    '        Next
-
-    '        ' Perform Self-Attention within each attention head.
-    '        Dim scaledAttentionOutputs(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                scaledAttentionOutputs(head, i) = PerformScaledDotProductAttention(splitHeads(head, i), splitHeads(head, 0 To headSize - 1))
-    '            Next
-    '        Next
-
-    '        ' Concatenate the attention outputs from all heads.
-    '        Dim concatenatedAttentionOutputs As Double() = New Double(hiddenLayerSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                concatenatedAttentionOutputs(head * headSize + i) = scaledAttentionOutputs(head, i)
-    '            Next
-    '        Next
-
-    '        Return concatenatedAttentionOutputs
-    '    End Function
-
-    '    ' Private method to perform Scaled Dot-Product Attention within a single attention head.
-    '    Private Function PerformScaledDotProductAttention(query As Double(), keys() As Double) As Double
-    '        ' Perform scaled dot-product attention.
-    '        Dim dotProduct As Double = MatrixDotProduct(query, keys)
-    '        Dim attentionScore As Double = dotProduct / Math.Sqrt(keys.Length)
-
-    '        ' Apply softmax to the attention scores.
-    '        Dim attentionWeights() As Double = Softmax(attentionScore, keys.Length)
-
-    '        ' Calculate the weighted sum using attention weights.
-    '        Dim weightedSum As Double = 0.0
-    '        For i As Integer = 0 To keys.Length - 1
-    '            weightedSum += attentionWeights(i) * keys(i)
-    '        Next
-
-    '        Return weightedSum
-    '    End Function
-
-    '    ' Helper method for softmax.
-    '    Public Function Softmax(attentionScore As Double, keySize As Integer) As Double()
-    '        ' Compute the softmax function to convert attention scores into attention weights.
-    '        Dim attentionWeights() As Double = New Double(keySize - 1) {}
-    '        Dim sumExpScores As Double = 0.0
-
-    '        For i As Integer = 0 To keySize - 1
-    '            attentionWeights(i) = Math.Exp(attentionScore)
-    '            sumExpScores += attentionWeights(i)
-    '        Next
-
-    '        For i As Integer = 0 To keySize - 1
-    '            attentionWeights(i) /= sumExpScores
-    '        Next
-
-    '        Return attentionWeights
-    '    End Function
-
-
-
-    'End Class
-    '' Define the MaskedSelfAttentionNeuralNetwork class inheriting from the NeuralNetwork class.
-    'Public Class MaskedSelfAttentionNeuralNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Additional member for Masked Self-Attention: Number of attention heads.
-    '    Private attentionHeads As Integer
-
-    '    ' Constructor to initialize Masked Self-Attention specific parameters.
-    '    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, attentionHeads As Integer)
-    '        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.attentionHeads = attentionHeads
-    '    End Sub
-
-    '    ' Private method for Masked Self-Attention mechanism.
-    '    Private Function MaskedSelfAttention(inputData As Double()) As Double()
-    '        ' Calculate activations of hidden layer neurons.
-    '        Dim hiddenLayerActivations As Double() = MatrixDotProduct(inputData, weightsIH)
-    '        ApplyTransferFunction(hiddenLayerActivations)
-
-    '        ' Apply Masked Self-Attention mechanism to the hidden layer activations.
-    '        hiddenLayerActivations = ApplyMaskedSelfAttention(hiddenLayerActivations)
-
-    '        ' Calculate activations of output layer neurons.
-    '        Dim outputLayerActivations As Double() = MatrixDotProduct(hiddenLayerActivations, weightsHO)
-    '        ApplyTransferFunction(outputLayerActivations)
-
-    '        Return outputLayerActivations
-    '    End Function
-
-    '    ' Private method to apply Masked Self-Attention mechanism.
-    '    Private Function ApplyMaskedSelfAttention(hiddenLayerActivations As Double()) As Double()
-    '        ' Split the hidden layer activations into multiple heads.
-    '        Dim headSize As Integer = hiddenLayerSize \ attentionHeads
-    '        Dim splitHeads(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                splitHeads(head, i) = hiddenLayerActivations(head * headSize + i)
-    '            Next
-    '        Next
-
-    '        ' Perform Masked Self-Attention within each attention head.
-    '        Dim scaledAttentionOutputs(,) As Double = New Double(attentionHeads - 1, headSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                scaledAttentionOutputs(head, i) = PerformScaledDotProductMaskedAttention(splitHeads(head, i), splitHeads(head, 0 To headSize - 1), headSize, i)
-    '            Next
-    '        Next
-
-    '        ' Concatenate the attention outputs from all heads.
-    '        Dim concatenatedAttentionOutputs As Double() = New Double(hiddenLayerSize - 1) {}
-    '        For head As Integer = 0 To attentionHeads - 1
-    '            For i As Integer = 0 To headSize - 1
-    '                concatenatedAttentionOutputs(head * headSize + i) = scaledAttentionOutputs(head, i)
-    '            Next
-    '        Next
-
-    '        Return concatenatedAttentionOutputs
-    '    End Function
-
-    '    ' Private method to perform Scaled Dot-Product Masked Attention within a single attention head.
-    '    Private Function PerformScaledDotProductMaskedAttention(query As Double(,), keys(,) As Double, keySize As Integer, currentPos As Integer) As Double
-    '        ' Perform scaled dot-product masked attention.
-    '        Dim dotProduct As Double = MatrixDotProduct(query, keys)
-    '        Dim attentionScore As Double = dotProduct / Math.Sqrt(keySize)
-
-    '        ' Apply masking to the attention score.
-    '        If currentPos < keySize Then
-    '            attentionScore = Double.NegativeInfinity
-    '        End If
-
-    '        ' Apply softmax to the attention scores.
-    '        Dim attentionWeights() As Double = Softmax(attentionScore, keys.Length)
-
-    '        ' Calculate the weighted sum using attention weights.
-    '        Dim weightedSum As Double = 0.0
-    '        For i As Integer = 0 To keys.Length - 1
-    '            weightedSum += attentionWeights(i) * keys(i)
-    '        Next
-
-    '        Return weightedSum
-    '    End Function
-
-    '    ' Helper method for softmax.
-    '    Public Function Softmax(attentionScore As Double, keySize As Integer) As Double()
-    '        ' Compute the softmax function to convert attention scores into attention weights.
-    '        Dim attentionWeights() As Double = New Double(keySize - 1) {}
-    '        Dim sumExpScores As Double = 0.0
-
-    '        For i As Integer = 0 To keySize - 1
-    '            attentionWeights(i) = Math.Exp(attentionScore)
-    '            sumExpScores += attentionWeights(i)
-    '        Next
-
-    '        For i As Integer = 0 To keySize - 1
-    '            attentionWeights(i) /= sumExpScores
-    '        Next
-
-    '        Return attentionWeights
-    '    End Function
-    'End Class
-    '' Define the TransformerEncoderNetwork class inheriting from the NeuralNetwork class.
-    'Public Class TransformerEncoderNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Private member for the number of attention heads in the self-attention mechanism.
-    '    Private attentionHeads As Integer
-
-    '    ' Private member for the size of the feed-forward layers.
-    '    Private feedForwardSize As Integer
-
-    '    ' Constructor to initialize TransformerEncoderNetwork specific parameters.
-    '    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, attentionHeads As Integer, feedForwardSize As Integer)
-    '        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.attentionHeads = attentionHeads
-    '        Me.feedForwardSize = feedForwardSize
-    '    End Sub
-
-    '    ' Override the BuildModel method to create the Transformer encoder architecture.
-    '    Protected Overrides Sub BuildModel()
-    '        ' Add the self-attention layer.
-    '        Me.AddLayer(New SelfAttentionLayer(inputSize:=Me.hiddenSize, attentionHeads:=Me.attentionHeads))
-
-    '        ' Add a feed-forward layer with ReLU activation.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.hiddenSize, hiddenSize:=Me.feedForwardSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add another feed-forward layer with ReLU activation.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.feedForwardSize, hiddenSize:=Me.hiddenSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add the output layer with softmax activation.
-    '        Me.AddLayer(New SoftmaxLayer(outputSize:=Me.outputSize))
-    '    End Sub
-    'End Class
-
-    '' Define the TransformerDecoderNetwork class inheriting from the NeuralNetwork class.
-    'Public Class TransformerDecoderNetwork
-    '    Inherits NeuralNetwork
-
-    '    ' Private member for the number of self-attention heads in the decoder.
-    '    Private selfAttentionHeads As Integer
-
-    '    ' Private member for the number of cross-attention heads in the decoder.
-    '    Private crossAttentionHeads As Integer
-
-    '    ' Private member for the size of the feed-forward layers.
-    '    Private feedForwardSize As Integer
-
-    '    ' Constructor to initialize TransformerDecoderNetwork specific parameters.
-    '    Public Sub New(inputSize As Integer, hiddenSize As Integer, outputSize As Integer, transferFunc As TransferFunction, learningRate As Double, selfAttentionHeads As Integer, crossAttentionHeads As Integer, feedForwardSize As Integer)
-    '        MyBase.New(inputSize, hiddenSize, outputSize, transferFunc, learningRate)
-    '        Me.selfAttentionHeads = selfAttentionHeads
-    '        Me.crossAttentionHeads = crossAttentionHeads
-    '        Me.feedForwardSize = feedForwardSize
-    '    End Sub
-
-    '    ' Override the BuildModel method to create the Transformer decoder architecture.
-    '    Protected Overrides Sub BuildModel()
-    '        ' Add the self-attention layer.
-    '        Me.AddLayer(New SelfAttentionLayer(inputSize:=Me.hiddenSize, attentionHeads:=Me.selfAttentionHeads))
-
-    '        ' Add the cross-attention layer.
-    '        Me.AddLayer(New CrossAttentionLayer(inputSize:=Me.hiddenSize, attentionHeads:=Me.crossAttentionHeads))
-
-    '        ' Add a feed-forward layer with ReLU activation.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.hiddenSize, hiddenSize:=Me.feedForwardSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add another feed-forward layer with ReLU activation.
-    '        Me.AddLayer(New FeedForwardLayer(inputSize:=Me.feedForwardSize, hiddenSize:=Me.hiddenSize, activationFunc:=TransferFunction.ReLU))
-
-    '        ' Add the output layer with softmax activation.
-    '        Me.AddLayer(New SoftmaxLayer(outputSize:=Me.outputSize))
-    '    End Sub
-    'End Class
-    'Public Class MachineTranslationWithDecoder
-    '    Public Shared Sub Run()
-    '        ' Sample training data for machine translation (English to French).
-    '        Dim englishSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "The quick brown fox jumps over the lazy dog.",
-    '            "She sells sea shells by the sea shore.",
-    '            "To be or not to be, that is the question.",
-    '            "A stitch in time saves nine.",
-    '            "All that glitters is not gold.",
-    '            "Where there is smoke, there is fire."
-    '        }
-
-    '        Dim frenchSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "Le renard brun rapide saute par-dessus le chien paresseux.",
-    '            "Elle vend des coquillages au bord de la mer.",
-    '            "Être ou ne pas être, telle est la question.",
-    '            "Un point à temps en sauve neuf.",
-    '            "Tout ce qui brille n'est pas de l'or.",
-    '            "Où il y a de la fumée, il y a du feu."
-    '        }
-
-    '        ' Preprocess the training data and create vocabulary and token sequences for both English and French.
-    '        ' ...
-
-    '        ' Define the vocabulary sizes for both English and French.
-    '        Dim englishVocabSize As Integer = englishVocabulary.Count
-    '        Dim frenchVocabSize As Integer = frenchVocabulary.Count
-
-    '        ' Define the maximum sequence lengths for both English and French.
-    '        Dim englishMaxSequenceLength As Integer = englishTokenizedSentences.Max(Function(tokens) tokens.Count)
-    '        Dim frenchMaxSequenceLength As Integer = frenchTokenizedSentences.Max(Function(tokens) tokens.Count)
-
-    '        ' Create a Transformer encoder network for machine translation.
-    '        Dim transformerEncoder As New TransformerEncoderNetwork(inputSize:=englishVocabSize, hiddenSize:=256, outputSize:=frenchVocabSize, transferFunc:=TransferFunction.ReLU, learningRate:=0.01, attentionHeads:=8, feedForwardSize:=512)
-
-    '        ' Train the Transformer encoder network using the tokenized and indexed training data.
-    '        ' ...
-
-    '        ' Create a Transformer decoder network for machine translation.
-    '        Dim transformerDecoder As New TransformerDecoderNetwork(inputSize:=frenchVocabSize, hiddenSize:=256, outputSize:=englishVocabSize, transferFunc:=TransferFunction.ReLU, learningRate:=0.01, selfAttentionHeads:=8, crossAttentionHeads:=8, feedForwardSize:=512)
-
-    '        ' Train the Transformer decoder network using the tokenized and indexed training data.
-    '        ' ...
-
-    '        ' Sample input sequence for translation (English sentence).
-    '        Dim englishInputSequence As List(Of Integer) = New List(Of Integer) From {englishWordToIndex("The"), englishWordToIndex("quick"), englishWordToIndex("brown"), englishWordToIndex("fox")}
-
-    '        ' Generate the translation using the trained Transformer encoder.
-    '        Dim frenchTranslationIndices As List(Of Integer) = transformerEncoder.Forward(englishInputSequence.ToArray()).ToList()
-
-    '        ' Generate the translation using the trained Transformer decoder.
-    '        Dim decodedEnglishIndices As List(Of Integer) = transformerDecoder.Forward(frenchTranslationIndices.ToArray()).ToList()
-
-    '        ' Convert the predicted English indices back to the actual words using the English index-to-word mapping.
-    '        Dim decodedEnglishTranslation As List(Of String) = englishIndexToWord(decodedEnglishIndices)
-
-    '        ' Display the translation for the input English sentence.
-    '        Console.WriteLine($"Input Sentence: The quick brown fox")
-    '        Console.WriteLine($"Decoded English Translation: {String.Join(" ", decodedEnglishTranslation)}")
-    '    End Sub
-    'End Class
-    'Public Class MachineTranslationWithEncoderDecoder
-    '    Public Shared Sub Run()
-    '        ' Sample training data for machine translation (English to French).
-    '        Dim englishSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "The quick brown fox jumps over the lazy dog.",
-    '            "She sells sea shells by the sea shore.",
-    '            "To be or not to be, that is the question.",
-    '            "A stitch in time saves nine.",
-    '            "All that glitters is not gold.",
-    '            "Where there is smoke, there is fire."
-    '        }
-
-    '        Dim frenchSentences As List(Of String) = New List(Of String) From
-    '        {
-    '            "Le renard brun rapide saute par-dessus le chien paresseux.",
-    '            "Elle vend des coquillages au bord de la mer.",
-    '            "Être ou ne pas être, telle est la question.",
-    '            "Un point à temps en sauve neuf.",
-    '            "Tout ce qui brille n'est pas de l'or.",
-    '            "Où il y a de la fumée, il y a du feu."
-    '        }
-
-    '        ' Preprocess the training data and create vocabulary and token sequences for both English and French.
-    '        ' ...
-
-    '        ' Define the vocabulary sizes for both English and French.
-    '        Dim englishVocabSize As Integer = englishVocabulary.Count
-    '        Dim frenchVocabSize As Integer = frenchVocabulary.Count
-
-    '        ' Define the maximum sequence lengths for both English and French.
-    '        Dim englishMaxSequenceLength As Integer = englishTokenizedSentences.Max(Function(tokens) tokens.Count)
-    '        Dim frenchMaxSequenceLength As Integer = frenchTokenizedSentences.Max(Function(tokens) tokens.Count)
-
-    '        ' Create a Transformer encoder-decoder network for machine translation.
-    '        Dim transformerEncoderDecoder As New TransformerEncoderDecoderNetwork(encoderInputSize:=englishVocabSize, decoderInputSize:=frenchVocabSize, hiddenSize:=256, outputSize:=frenchVocabSize, transferFunc:=TransferFunction.ReLU, learningRate:=0.01, encoderSelfAttentionHeads:=8, decoderCrossAttentionHeads:=8, feedForwardSize:=512)
-
-    '        ' Train the Transformer encoder-decoder network using the tokenized and indexed training data.
-    '        ' ...
-
-    '        ' Sample input sequence for translation (English sentence).
-    '        Dim englishInputSequence As List(Of Integer) = New List(Of Integer) From {englishWordToIndex("The"), englishWordToIndex("quick"), englishWordToIndex("brown"), englishWordToIndex("fox")}
-
-    '        ' Generate the translation using the trained Transformer encoder-decoder.
-    '        Dim frenchTranslationIndices As List(Of Integer) = transformerEncoderDecoder.Forward(englishInputSequence.ToArray()).ToList()
-
-    '        ' Convert the predicted French indices back to the actual words using the French index-to-word mapping.
-    '        Dim frenchTranslation As List(Of String) = frenchIndexToWord(frenchTranslationIndices)
-
-    '        ' Display the translation for the input English sentence.
-    '        Console.WriteLine($"Input Sentence: The quick brown fox")
-    '        Console.WriteLine($"Translated Sentence: {String.Join(" ", frenchTranslation)}")
-    '    End Sub
-    'End Class
+            Return result
+        End Function
+        Private Function ActivationDerivative(ByVal vector As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+            For Each val As Double In vector
+                result.Add(1 - Math.Tanh(val) ^ 2)
+            Next
+            Return result
+        End Function
+
+        Private Function DotProduct(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of List(Of Double))) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For Each row As List(Of Double) In vector2
+                Dim sum As Double = 0
+                For i As Integer = 0 To vector1.Count - 1
+                    sum += vector1(i) * row(i)
+                Next
+                result.Add(sum)
+            Next
+
+            Return result
+        End Function
+
+        Private Function TransposeMatrix(ByVal matrix As List(Of List(Of Double))) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For i As Integer = 0 To matrix(0).Count - 1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For j As Integer = 0 To matrix.Count - 1
+                    row.Add(matrix(j)(i))
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function OuterProduct(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of Double)) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For Each val1 As Double In vector1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For Each val2 As Double In vector2
+                    row.Add(val1 * val2)
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function AddVectors(ByVal vector1 As List(Of List(Of Double)), ByVal vector2 As List(Of List(Of Double))) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For i As Integer = 0 To vector1.Count - 1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For j As Integer = 0 To vector1(i).Count - 1
+                    row.Add(vector1(i)(j) + vector2(i)(j))
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function SubtractVectors(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For i As Integer = 0 To vector1.Count - 1
+                result.Add(vector1(i) - vector2(i))
+            Next
+
+            Return result
+        End Function
+
+        Private Function MultiplyVectorByScalar(ByVal vector As List(Of Double), ByVal scalar As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For i As Integer = 0 To vector.Count - 1
+                result.Add(vector(i) * scalar(i))
+            Next
+
+            Return result
+        End Function
+
+        Private Function CalculateTotalError(ByVal targetOutput As List(Of Double), ByVal predictedOutput As List(Of Double)) As Double
+            Dim totalError As Double = 0
+
+            For i As Integer = 0 To targetOutput.Count - 1
+                totalError += (targetOutput(i) - predictedOutput(i)) ^ 2
+            Next
+
+            Return totalError / 2
+        End Function
+    End Class
+    Public Class LSTM
+        ''' <summary>
+        ''' Serializes object to json
+        ''' </summary>
+        ''' <returns> </returns>
+        Public Function ToJson() As String
+            Dim Converter As New JavaScriptSerializer
+            Return Converter.Serialize(Me)
+        End Function
+
+        ''' <summary>
+        ''' Serializes Object to XML
+        ''' </summary>
+        ''' <param name="FileName"></param>
+        Public Sub ToXML(ByRef FileName As String)
+            Dim serialWriter As StreamWriter
+            serialWriter = New StreamWriter(FileName)
+            Dim xmlWriter As New XmlSerializer(Me.GetType())
+            xmlWriter.Serialize(serialWriter, Me)
+            serialWriter.Close()
+        End Sub
+        Private inputSize As Integer
+        Private hiddenSize As Integer
+        Private outputSize As Integer
+        Private learningRate As Double
+        Private maxIterations As Integer
+
+        Private inputWeights As List(Of List(Of Double))
+        Private hiddenWeights As List(Of List(Of Double))
+
+        Public Sub New(ByVal inputSize As Integer, ByVal hiddenSize As Integer, ByVal outputSize As Integer, ByVal learningRate As Double, ByVal maxIterations As Integer)
+            Me.inputSize = inputSize
+            Me.hiddenSize = hiddenSize
+            Me.outputSize = outputSize
+            Me.learningRate = learningRate
+            Me.maxIterations = maxIterations
+
+            ' Initialize weights randomly
+            Me.inputWeights = InitializeWeights(inputSize, hiddenSize)
+            Me.hiddenWeights = InitializeWeights(hiddenSize, outputSize)
+        End Sub
+
+        Private Function InitializeWeights(ByVal inputSize As Integer, ByVal outputSize As Integer) As List(Of List(Of Double))
+            Dim weights As List(Of List(Of Double)) = New List(Of List(Of Double))()
+            Dim random As Random = New Random()
+
+            For i As Integer = 0 To inputSize - 1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For j As Integer = 0 To outputSize - 1
+                    row.Add(random.NextDouble())
+                Next
+                weights.Add(row)
+            Next
+
+            Return weights
+        End Function
+
+        Public Sub Train(ByVal inputSequence As List(Of Double), ByVal targetOutput As List(Of Double))
+            Dim iteration As Integer = 0
+            Dim ierror As Double = Double.PositiveInfinity
+
+            While iteration < maxIterations AndAlso ierror > 0.001
+                ' Forward propagation
+                Dim hiddenLayerOutput As List(Of Double) = CalculateLayerOutput(inputSequence, inputWeights)
+                Dim outputLayerOutput As List(Of Double) = CalculateLayerOutput(hiddenLayerOutput, hiddenWeights)
+
+                ' Backpropagation
+                Dim outputError As List(Of Double) = SubtractVectors(targetOutput, outputLayerOutput)
+                Dim outputDelta As List(Of Double) = MultiplyVectorByScalar(outputError, ActivationDerivative(outputLayerOutput))
+
+                Dim hiddenError As List(Of Double) = DotProduct(outputDelta, TransposeMatrix(hiddenWeights))
+                Dim hiddenDelta As List(Of Double) = MultiplyVectorByScalar(hiddenError, ActivationDerivative(hiddenLayerOutput))
+
+                ' Update weights
+                hiddenWeights = AddVectors(hiddenWeights, OuterProduct(hiddenLayerOutput, outputDelta))
+                inputWeights = AddVectors(inputWeights, OuterProduct(inputSequence, hiddenDelta))
+
+                ' Calculate total error
+                ierror = CalculateTotalError(targetOutput, outputLayerOutput)
+
+                iteration += 1
+            End While
+        End Sub
+
+        Public Function Predict(ByVal inputSequence As List(Of Double)) As List(Of Double)
+            Dim hiddenLayerOutput As List(Of Double) = CalculateLayerOutput(inputSequence, inputWeights)
+            Dim outputLayerOutput As List(Of Double) = CalculateLayerOutput(hiddenLayerOutput, hiddenWeights)
+            Return outputLayerOutput
+        End Function
+
+        Private Function ActivationFunction(ByVal vector As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+            For Each val As Double In vector
+                result.Add(Math.Tanh(val))
+            Next
+            Return result
+        End Function
+
+        Private Function ActivationDerivative(ByVal vector As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+            For Each val As Double In vector
+                result.Add(1 - Math.Tanh(val) ^ 2)
+            Next
+            Return result
+        End Function
+
+        Private Function CalculateLayerOutput(ByVal input As List(Of Double), ByVal weights As List(Of List(Of Double))) As List(Of Double)
+            Dim weightedSum As List(Of Double) = DotProduct(input, weights)
+            Return ActivationFunction(weightedSum)
+        End Function
+
+        Private Function DotProduct(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of List(Of Double))) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For Each row As List(Of Double) In vector2
+                Dim sum As Double = 0
+                For i As Integer = 0 To vector1.Count - 1
+                    sum += vector1(i) * row(i)
+                Next
+                result.Add(sum)
+            Next
+
+            Return result
+        End Function
+
+        Private Function TransposeMatrix(ByVal matrix As List(Of List(Of Double))) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For i As Integer = 0 To matrix(0).Count - 1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For j As Integer = 0 To matrix.Count - 1
+                    row.Add(matrix(j)(i))
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function OuterProduct(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of Double)) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For Each val1 As Double In vector1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For Each val2 As Double In vector2
+                    row.Add(val1 * val2)
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function AddVectors(ByVal vector1 As List(Of List(Of Double)), ByVal vector2 As List(Of List(Of Double))) As List(Of List(Of Double))
+            Dim result As List(Of List(Of Double)) = New List(Of List(Of Double))()
+
+            For i As Integer = 0 To vector1.Count - 1
+                Dim row As List(Of Double) = New List(Of Double)()
+                For j As Integer = 0 To vector1(i).Count - 1
+                    row.Add(vector1(i)(j) + vector2(i)(j))
+                Next
+                result.Add(row)
+            Next
+
+            Return result
+        End Function
+
+        Private Function SubtractVectors(ByVal vector1 As List(Of Double), ByVal vector2 As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For i As Integer = 0 To vector1.Count - 1
+                result.Add(vector1(i) - vector2(i))
+            Next
+
+            Return result
+        End Function
+
+        Private Function MultiplyVectorByScalar(ByVal vector As List(Of Double), ByVal scalar As List(Of Double)) As List(Of Double)
+            Dim result As List(Of Double) = New List(Of Double)()
+
+            For i As Integer = 0 To vector.Count - 1
+                result.Add(vector(i) * scalar(i))
+            Next
+
+            Return result
+        End Function
+
+        Private Function CalculateTotalError(ByVal targetOutput As List(Of Double), ByVal predictedOutput As List(Of Double)) As Double
+            Dim totalError As Double = 0
+
+            For i As Integer = 0 To targetOutput.Count - 1
+                totalError += (targetOutput(i) - predictedOutput(i)) ^ 2
+            Next
+
+            Return totalError / 2
+        End Function
+    End Class
 End Namespace
+
+
+
+
